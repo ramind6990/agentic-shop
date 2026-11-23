@@ -1,0 +1,28 @@
+@let m = message();
+@if (m.authorType === 'SYSTEM') {
+  <p class="system small text-body-secondary text-center my-2">
+    {{ m.body }} ·
+    <time [attr.datetime]="m.createdAt">{{ m.createdAt | date: 'MMM d, HH:mm' }}</time>
+  </p>
+} @else {
+  <article
+    class="bubble"
+    [class.from-platform]="fromPlatformSide()"
+    [class.internal]="m.internal"
+    [attr.data-author]="m.authorType"
+  >
+    <header class="d-flex flex-wrap align-items-center gap-2 small mb-1">
+      <span class="fw-semibold">{{ m.author?.name }}</span>
+      <span class="badge text-bg-light border fw-normal">{{ authorLabel() }}</span>
+      @if (m.internal) {
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">
+          Internal note
+        </span>
+      }
+      <time class="ms-auto text-body-secondary" [attr.datetime]="m.createdAt">
+        {{ m.createdAt | date: 'MMM d, y, HH:mm' }}
+      </time>
+    </header>
+    <p class="mb-0">{{ m.body }}</p>
+  </article>
+}

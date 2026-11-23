@@ -1,0 +1,46 @@
+@import 'abstracts';
+
+.bubble {
+  max-width: 85%;
+  padding: 0.75rem 1rem;
+  background: $app-surface;
+  border: 1px solid $app-border-color;
+  border-left-width: 3px;
+  border-radius: 0 $border-radius-lg $border-radius-lg 0;
+  font-size: $font-size-sm;
+
+  &.from-platform {
+    margin-left: auto;
+  }
+
+  &[data-author='CUSTOMER'] {
+    border-left-color: $primary;
+  }
+
+  &[data-author='STAFF'] {
+    border-left-color: $teal;
+  }
+
+  &[data-author='SELLER'] {
+    border-left-color: $orange;
+  }
+
+  &.internal {
+    background: tint-color($warning, 88%);
+    border-color: tint-color($warning, 50%);
+    border-left-color: $warning;
+  }
+}
+
+.system {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+
+  &::before,
+  &::after {
+    content: '';
+    flex: 1;
+    border-top: 1px dashed $app-border-color;
+  }
+}

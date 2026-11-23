@@ -1,0 +1,60 @@
+@let d = doc();
+@let v = version();
+
+<header class="mb-3">
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+    <span class="small text-body-secondary">{{ typeLabel() }}</span>
+    <app-role-badge prefix="Readable from:" [role]="d.minRole" />
+    @if (d.seller; as seller) {
+      <a class="small" [routerLink]="['/sellers', seller.id]">{{ seller.name }}</a>
+    }
+  </div>
+  <h1 class="h4 mb-0">{{ d.title }}</h1>
+  <p class="small text-body-secondary font-monospace mb-0">{{ d.code }}</p>
+</header>
+
+<form class="panel d-flex flex-wrap align-items-end gap-3 px-3 py-2 mb-4" aria-label="Choose a version">
+  <div>
+    <label for="doc-version" class="form-label small mb-1">Version</label>
+    <select id="doc-version" class="form-select form-select-sm">
+      @for (option of d.versions; track option.versionNo) {
+        <option [value]="option.versionNo" [selected]="option.versionNo === v.versionNo">
+          Version {{ option.versionNo }}{{ option.effectiveTo ? '' : ' (current)' }}
+        </option>
+      }
+    </select>
+  </div>
+  <div>
+    <label for="doc-at" class="form-label small mb-1">Or the version in force on</label>
+    <div class="d-flex gap-2">
+      <input id="doc-at" type="date" class="form-control form-control-sm" />
+      <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap">Show</button>
+    </div>
+  </div>
+  <p class="small text-body-secondary mb-0 ms-auto align-self-center">
+    Policies apply by order date: an order follows the version in force when it was placed.
+  </p>
+</form>
+
+<div class="row g-4">
+  <div class="col-xxl-8">
+    <app-section-card [title]="'Version ' + v.versionNo">
+      <p class="small mb-3"><span class="text-body-secondary">Summary:</span> {{ v.summary }}</p>
+      @for (section of v.sections; track section.ordinal; let last = $last) {
+        <app-document-section-view
+          [section]="section"
+          [class.border-bottom]="!last"
+          [class.pb-3]="!last"
+          [class.mb-3]="!last"
+        />
+      } @empty {
+        <p class="small text-body-secondary mb-0">No sections in this mock version.</p>
+      }
+    </app-section-card>
+  </div>
+  <div class="col-xxl-4">
+    <app-section-card title="Version history">
+      <app-version-timeline [versions]="d.versions" [selected]="v.versionNo" />
+    </app-section-card>
+  </div>
+</div>

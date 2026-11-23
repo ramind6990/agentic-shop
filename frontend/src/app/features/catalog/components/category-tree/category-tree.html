@@ -1,0 +1,22 @@
+<ng-template #branch let-nodes>
+  <ul class="tree">
+    @for (node of nodes; track node.id) {
+      <li>
+        @if (node.leaf) {
+          <a class="leaf" routerLink="/products">{{ node.name }}</a>
+          <span class="meta">#{{ node.id }}</span>
+        } @else {
+          <details [open]="node.level === 1">
+            <summary>
+              <span class="fw-semibold">{{ node.name }}</span>
+              <span class="meta">{{ node.children.length }} {{ node.level === 1 ? 'groups' : 'categories' }}</span>
+            </summary>
+            <ng-container [ngTemplateOutlet]="branch" [ngTemplateOutletContext]="{ $implicit: node.children }" />
+          </details>
+        }
+      </li>
+    }
+  </ul>
+</ng-template>
+
+<ng-container [ngTemplateOutlet]="branch" [ngTemplateOutletContext]="{ $implicit: nodes() }" />

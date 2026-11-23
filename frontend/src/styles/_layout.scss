@@ -1,0 +1,70 @@
+// App shell: top bar, side nav and the scrolling content area.
+
+.app-shell {
+  display: grid;
+  grid-template-rows: $app-topbar-height minmax(0, 1fr);
+  grid-template-columns: $app-sidenav-width minmax(0, 1fr);
+  grid-template-areas:
+    'topbar topbar'
+    'sidenav content';
+  height: 100vh;
+
+  @include media-breakpoint-down(md) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: $app-topbar-height auto minmax(0, 1fr);
+    grid-template-areas:
+      'topbar'
+      'sidenav'
+      'content';
+  }
+}
+
+.app-topbar {
+  grid-area: topbar;
+  background: $app-surface;
+  border-bottom: 1px solid $app-border-color;
+}
+
+.app-sidenav {
+  grid-area: sidenav;
+  background: $app-surface;
+  border-right: 1px solid $app-border-color;
+  overflow-y: auto;
+
+  @include media-breakpoint-down(md) {
+    border-right: 0;
+    border-bottom: 1px solid $app-border-color;
+  }
+}
+
+.app-content {
+  grid-area: content;
+  overflow-y: auto;
+  padding: map-get($spacers, 4);
+
+  @include media-breakpoint-down(md) {
+    padding: map-get($spacers, 3);
+  }
+}
+
+// Page that fills the content area: header stays put, only marked panes scroll.
+// Applies from lg up; on smaller screens the page stacks and scrolls normally.
+//   <host class="page-fill">  header  <div class="row page-fill-body"> <div class="col scroll-pane">…
+@include media-breakpoint-up(lg) {
+  .page-fill {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .page-fill-body {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .scroll-pane {
+    height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

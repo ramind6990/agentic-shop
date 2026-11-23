@@ -1,0 +1,12 @@
+@import 'abstracts';
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: tint-color($primary, 85%);
+  color: shade-color($primary, 30%);
+  font-weight: $font-weight-semibold;
+}

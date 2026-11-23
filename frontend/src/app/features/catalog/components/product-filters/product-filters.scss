@@ -1,0 +1,27 @@
+@import 'abstracts';
+
+:host {
+  display: block;
+  font-size: $font-size-sm;
+}
+
+app-filter-section:last-of-type {
+  border-bottom: 0;
+}
+
+// Checkbox/radio row with its count pushed to the right.
+.facet-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+
+  .form-check-label {
+    flex: 1;
+  }
+}
+
+.facet-count {
+  color: $text-muted;
+  font-size: $font-size-sm * 0.9;
+}

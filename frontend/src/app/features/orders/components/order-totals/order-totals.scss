@@ -1,0 +1,24 @@
+@import 'abstracts';
+
+.totals {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 0.35rem;
+
+  dt {
+    font-weight: $font-weight-normal;
+    color: $text-muted;
+  }
+
+  dd {
+    margin: 0;
+    text-align: end;
+  }
+
+  .total {
+    padding-top: 0.5rem;
+    border-top: 1px solid $app-border-color;
+    font-weight: $font-weight-semibold;
+    color: $body-color;
+  }
+}

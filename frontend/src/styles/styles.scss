@@ -1,0 +1,7 @@
+// Global stylesheet entry. Order matters: tokens, Bootstrap, then app layers.
+// Component-specific styles live next to their component.
+@import 'variables';
+@import 'bootstrap/scss/bootstrap';
+
+@import 'base';
+@import 'layout';

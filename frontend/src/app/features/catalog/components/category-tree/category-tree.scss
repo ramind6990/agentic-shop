@@ -1,0 +1,47 @@
+@import 'abstracts';
+
+:host {
+  display: block;
+  font-size: $font-size-sm;
+}
+
+.tree {
+  list-style: none;
+  margin: 0;
+  padding-left: 0;
+
+  // nested levels are indented with a guide line
+  .tree {
+    margin: 0.25rem 0 0.5rem 0.6rem;
+    padding-left: 1rem;
+    border-left: 1px solid $app-border-color;
+  }
+
+  li {
+    padding: 0.15rem 0;
+  }
+}
+
+summary {
+  cursor: pointer;
+  padding: 0.2rem 0.25rem;
+  border-radius: $border-radius;
+
+  &:hover {
+    background: $app-muted-bg;
+  }
+}
+
+.leaf {
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.meta {
+  margin-left: 0.5rem;
+  color: $text-muted;
+  font-size: 0.85em;
+}

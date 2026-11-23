@@ -1,0 +1,39 @@
+<app-list-layout title="Refunds" noun="refunds" [result]="result">
+  <form slot="filters" class="row g-2 align-items-end" role="search" aria-label="Filter refunds">
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="ref-status" class="form-label small mb-1">Status</label>
+      <select id="ref-status" class="form-select form-select-sm">
+        <option value="">Any status</option>
+        @for (o of statusOptions; track o.value) {
+          <option [value]="o.value">{{ o.label }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="ref-order" class="form-label small mb-1">Order ID</label>
+      <input id="ref-order" type="number" class="form-control form-control-sm" placeholder="99504" />
+    </div>
+    <div class="col-6 col-md-4 col-xl-3">
+      <label for="ref-seller" class="form-label small mb-1">Seller</label>
+      <select id="ref-seller" class="form-select form-select-sm">
+        <option value="">Any seller</option>
+        @for (s of sellers; track s.id) {
+          <option [value]="s.id">{{ s.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="ref-from" class="form-label small mb-1">Created from</label>
+      <input id="ref-from" type="date" class="form-control form-control-sm" />
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="ref-to" class="form-label small mb-1">To</label>
+      <input id="ref-to" type="date" class="form-control form-control-sm" />
+    </div>
+    <div class="col-6 col-md-4 col-xl-1">
+      <button type="reset" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+    </div>
+  </form>
+
+  <app-data-table caption="Refunds, newest first" [rows]="result.content" [columns]="columns" [rowId]="rowId" />
+</app-list-layout>

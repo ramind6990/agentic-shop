@@ -1,0 +1,17 @@
+@import 'abstracts';
+
+.nav-link {
+  padding: 0.3rem 0.5rem;
+  border-radius: $border-radius;
+  color: $body-color;
+
+  &:hover {
+    background: $app-muted-bg;
+  }
+
+  &.active {
+    background: tint-color($primary, 88%);
+    color: shade-color($primary, 20%);
+    font-weight: $font-weight-semibold;
+  }
+}

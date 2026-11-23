@@ -1,0 +1,9 @@
+// Variables, functions and mixins only: produces no CSS.
+// Component stylesheets that need Bootstrap breakpoints or app tokens import this file:
+//   @import 'abstracts';
+@import 'bootstrap/scss/functions';
+@import 'variables';
+@import 'bootstrap/scss/variables';
+@import 'bootstrap/scss/variables-dark';
+@import 'bootstrap/scss/maps';
+@import 'bootstrap/scss/mixins';

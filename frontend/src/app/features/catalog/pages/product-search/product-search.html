@@ -1,0 +1,42 @@
+<app-page-header
+  title="Products"
+  [subtitle]="categoryPath.join(' › ') + ' · ' + (result.totalElements | number) + ' results'"
+>
+  <form class="d-flex flex-wrap gap-2" role="search">
+    <div>
+      <label for="product-q" class="visually-hidden">Search product titles</label>
+      <input id="product-q" type="search" class="form-control form-control-sm" placeholder="Search titles" />
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <label for="product-sort" class="small text-body-secondary text-nowrap">Sort by</label>
+      <select id="product-sort" class="form-select form-select-sm">
+        @for (option of sortOptions; track option.value) {
+          <option [value]="option.value">{{ option.label }}</option>
+        }
+      </select>
+    </div>
+  </form>
+</app-page-header>
+
+<div class="row g-4 page-fill-body">
+  <div class="col-lg-4 col-xl-3 scroll-pane">
+    <app-product-filters [facets]="facets" [categoryPath]="categoryPath" />
+  </div>
+
+  <section class="col-lg-8 col-xl-9 scroll-pane" aria-label="Search results" tabindex="0">
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-xxl-4 g-3 mb-4">
+      @for (product of result.content; track product.id) {
+        <div class="col">
+          <app-product-card [product]="product" [priority]="$index < 4" />
+        </div>
+      }
+    </div>
+
+    <app-pager
+      [page]="result.page"
+      [size]="result.size"
+      [totalElements]="result.totalElements"
+      [totalPages]="result.totalPages"
+    />
+  </section>
+</div>

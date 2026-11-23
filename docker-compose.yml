@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: agenticshop-postgres
+    environment:
+      POSTGRES_DB: agenticshop
+      POSTGRES_USER: agenticshop
+      POSTGRES_PASSWORD: agenticshop
+    ports:
+      - "5438:5432"
+    volumes:
+      - agenticshop-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agenticshop -d agenticshop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  agenticshop-pgdata:

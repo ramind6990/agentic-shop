@@ -1,0 +1,66 @@
+<app-list-layout title="Tickets" noun="tickets" [result]="result">
+  <form slot="filters" class="row g-2 align-items-end" role="search" aria-label="Filter tickets">
+    <div class="col-12 col-md-4 col-xl-2">
+      <label for="tk-q" class="form-label small mb-1">Subject or number</label>
+      <input id="tk-q" type="search" class="form-control form-control-sm" placeholder="TCK-048213" />
+    </div>
+    <div class="col-6 col-md-4 col-xl-1">
+      <label for="tk-status" class="form-label small mb-1">Status</label>
+      <select id="tk-status" class="form-select form-select-sm">
+        <option value="">Any</option>
+        @for (o of statusOptions; track o.value) {
+          <option [value]="o.value">{{ o.label }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-1">
+      <label for="tk-priority" class="form-label small mb-1">Priority</label>
+      <select id="tk-priority" class="form-select form-select-sm">
+        <option value="">Any</option>
+        @for (o of priorityOptions; track o.value) {
+          <option [value]="o.value">{{ o.label }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="tk-category" class="form-label small mb-1">Category</label>
+      <select id="tk-category" class="form-select form-select-sm">
+        <option value="">Any category</option>
+        @for (o of categoryOptions; track o.value) {
+          <option [value]="o.value">{{ o.label }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-1">
+      <label for="tk-tier" class="form-label small mb-1">Tier</label>
+      <select id="tk-tier" class="form-select form-select-sm">
+        <option value="">Any</option>
+        <option value="T1">Tier 1</option>
+        <option value="T2">Tier 2</option>
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="tk-assignee" class="form-label small mb-1">Assignee</label>
+      <select id="tk-assignee" class="form-select form-select-sm">
+        <option value="">Anyone</option>
+        @for (a of assignees; track a.id) {
+          <option [value]="a.id">{{ a.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-2">
+      <label for="tk-seller" class="form-label small mb-1">Seller</label>
+      <select id="tk-seller" class="form-select form-select-sm">
+        <option value="">Any seller</option>
+        @for (s of sellers; track s.id) {
+          <option [value]="s.id">{{ s.name }}</option>
+        }
+      </select>
+    </div>
+    <div class="col-6 col-md-4 col-xl-1">
+      <button type="reset" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+    </div>
+  </form>
+
+  <app-ticket-table [tickets]="result.content" />
+</app-list-layout>

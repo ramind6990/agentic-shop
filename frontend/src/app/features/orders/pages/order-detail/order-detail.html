@@ -1,0 +1,72 @@
+<app-breadcrumbs [items]="crumbs" />
+
+<header class="d-flex flex-wrap align-items-end gap-3 mb-3">
+  <div class="me-auto">
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <h1 class="h4 mb-0 font-monospace">{{ order.orderNumber }}</h1>
+      <app-status-badge [status]="order.status" />
+    </div>
+    <p class="small text-body-secondary mb-0">
+      Placed <time [attr.datetime]="order.placedAt">{{ order.placedAt | date: 'MMM d, y, HH:mm' }}</time>
+    </p>
+  </div>
+  <dl class="d-flex gap-4 small mb-0">
+    <div>
+      <dt class="section-label">Customer</dt>
+      <dd class="mb-0"><a [routerLink]="['/customers', order.customer.id]">{{ order.customer.name }}</a></dd>
+    </div>
+    <div>
+      <dt class="section-label">Seller</dt>
+      <dd class="mb-0"><a [routerLink]="['/sellers', order.seller.id]">{{ order.seller.name }}</a></dd>
+    </div>
+  </dl>
+</header>
+
+<div class="row g-4">
+  <div class="col-xl-8 d-flex flex-column gap-4">
+    <app-section-card title="Items" [flush]="true">
+      <app-data-table
+        caption="Order lines"
+        [rows]="order.items"
+        [columns]="itemColumns"
+        [rowId]="itemId"
+      />
+    </app-section-card>
+
+    <app-section-card [title]="'Returns (' + order.returns.length + ')'">
+      @for (item of order.returns; track item.id; let last = $last) {
+        <app-return-card [item]="item" [class.border-bottom]="!last" [class.pb-3]="!last" [class.mb-3]="!last" />
+      } @empty {
+        <p class="small text-body-secondary mb-0">No returns for this order.</p>
+      }
+    </app-section-card>
+
+    <app-section-card [title]="'Refunds (' + order.refunds.length + ')'" [flush]="true">
+      <app-data-table
+        caption="Refunds"
+        emptyText="No refunds for this order."
+        [rows]="order.refunds"
+        [columns]="refundColumns"
+        [rowId]="refundId"
+      />
+    </app-section-card>
+  </div>
+
+  <div class="col-xl-4 d-flex flex-column gap-4">
+    <app-section-card title="Summary">
+      <app-order-totals [order]="order" />
+    </app-section-card>
+
+    <app-section-card title="Ship to">
+      <app-address-block class="small" [address]="order.shippingAddress" />
+    </app-section-card>
+
+    <app-section-card title="Payments" [flush]="true">
+      <app-payment-list [payments]="order.payments" [currency]="order.currency" />
+    </app-section-card>
+
+    <app-section-card title="Shipments" [flush]="true">
+      <app-shipment-list [shipments]="order.shipments" />
+    </app-section-card>
+  </div>
+</div>

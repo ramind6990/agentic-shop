@@ -1,0 +1,16 @@
+@import 'abstracts';
+
+.thumb {
+  border: 2px solid transparent;
+  border-radius: $border-radius;
+  line-height: 0;
+
+  img {
+    width: 4.5rem;
+    height: 4.5rem;
+  }
+}
+
+.thumb-active {
+  border-color: $primary;
+}

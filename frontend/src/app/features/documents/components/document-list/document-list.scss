@@ -1,0 +1,23 @@
+@import 'abstracts';
+
+:host {
+  display: block;
+  font-size: $font-size-sm;
+}
+
+.doc-link {
+  display: block;
+  padding: 0.4rem 1rem;
+  border-left: 3px solid transparent;
+  color: $body-color;
+  text-decoration: none;
+
+  &:hover {
+    background: $app-muted-bg;
+  }
+
+  &.active {
+    border-left-color: $primary;
+    background: tint-color($primary, 90%);
+  }
+}

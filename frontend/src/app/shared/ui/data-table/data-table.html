@@ -1,0 +1,76 @@
+<table class="table table-hover table-sm align-middle mb-0">
+  <caption class="visually-hidden">{{ caption() }}</caption>
+  <thead>
+    <tr>
+      @for (column of columns(); track column.header) {
+        <th scope="col" [class.text-end]="isRight(column)">{{ column.header }}</th>
+      }
+    </tr>
+  </thead>
+  <tbody>
+    @for (row of rows(); track rowId()(row)) {
+      <tr>
+        @for (column of columns(); track column.header) {
+          <td [class.text-end]="isRight(column)" [class.num]="isRight(column)">
+            <ng-container
+              [ngTemplateOutlet]="column.link && column.value(row) !== null ? linked : plain"
+              [ngTemplateOutletContext]="{ $implicit: row, column }"
+            />
+            @if (column.hint && column.hint(row); as hint) {
+              <div class="small text-body-secondary text-truncate">{{ hint }}</div>
+            }
+          </td>
+        }
+      </tr>
+    } @empty {
+      <tr>
+        <td [attr.colspan]="columns().length" class="text-center text-body-secondary py-5">
+          {{ emptyText() }}
+        </td>
+      </tr>
+    }
+  </tbody>
+</table>
+
+<ng-template #linked let-row let-column="column">
+  <a [routerLink]="column.link(row)" [class.font-monospace]="column.mono">
+    <ng-container [ngTemplateOutlet]="value" [ngTemplateOutletContext]="{ $implicit: row, column }" />
+  </a>
+</ng-template>
+
+<ng-template #plain let-row let-column="column">
+  <span [class.font-monospace]="column.mono">
+    <ng-container [ngTemplateOutlet]="value" [ngTemplateOutletContext]="{ $implicit: row, column }" />
+  </span>
+</ng-template>
+
+<ng-template #value let-row let-column="column">
+  @let v = column.value(row);
+  @if (v === null || v === '') {
+    <span class="text-body-tertiary">–</span>
+  } @else {
+    @switch (column.type) {
+      @case ('number') {
+        {{ v | number }}
+      }
+      @case ('money') {
+        {{ v | currency: (column.currency ? column.currency(row) : 'USD') }}
+      }
+      @case ('date') {
+        <time [attr.datetime]="v">{{ v | date: 'mediumDate' }}</time>
+      }
+      @case ('datetime') {
+        <time [attr.datetime]="v">{{ v | date: 'MMM d, y, HH:mm' }}</time>
+      }
+      @case ('status') {
+        <app-status-badge [status]="'' + v" />
+      }
+      @case ('role') {
+        <app-role-badge [role]="'' + v" />
+      }
+      @default {
+        {{ v }}
+      }
+    }
+  }
+</ng-template>

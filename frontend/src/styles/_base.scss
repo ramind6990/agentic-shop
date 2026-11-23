@@ -1,0 +1,62 @@
+// Small app-wide conventions on top of Bootstrap, shared by many screens.
+
+html,
+body {
+  height: 100%;
+}
+
+// Section label used in nav groups, filter panels and detail sidebars.
+.section-label {
+  font-size: $font-size-sm * 0.85;
+  font-weight: $font-weight-semibold;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $text-muted;
+}
+
+// Plain white panel with a hairline border (cards without header chrome).
+.panel {
+  background: $app-surface;
+  border: 1px solid $app-border-color;
+  border-radius: $border-radius-lg;
+}
+
+// Neutral placeholder block (images not loaded, charts later).
+.placeholder-block {
+  background: $app-muted-bg;
+  border-radius: $border-radius;
+}
+
+// Tabular numbers keep prices and counts aligned.
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+// Links inside tables stay quiet until hovered; underlined links on every row are noisy.
+.table a {
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// Label / value pairs on detail pages: <dl class="kv-list"><dt>Status</dt><dd>…</dd></dl>
+.kv-list {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+  margin: 0;
+  font-size: $font-size-sm;
+
+  dt {
+    font-weight: $font-weight-normal;
+    color: $text-muted;
+  }
+
+  dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

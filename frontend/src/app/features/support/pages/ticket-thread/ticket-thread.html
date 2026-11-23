@@ -1,0 +1,28 @@
+<div>
+  <app-breadcrumbs [items]="crumbs" />
+  <header class="mb-3">
+    <h1 class="h4 mb-0">{{ ticket.subject }}</h1>
+    <p class="small text-body-secondary mb-0 font-monospace">{{ ticket.ticketNumber }}</p>
+  </header>
+</div>
+
+<div class="row g-4 page-fill-body">
+  <section class="col-xl-8 scroll-pane" tabindex="0" aria-label="Messages, oldest first">
+    <div class="d-flex flex-column gap-3 pb-3">
+      @for (message of messages.content; track message.id) {
+        <app-ticket-message [message]="message" />
+      }
+      @if (messages.page < messages.totalPages - 1) {
+        <button type="button" class="btn btn-sm btn-outline-secondary align-self-center">
+          Load newer messages
+        </button>
+      }
+    </div>
+  </section>
+
+  <div class="col-xl-4 scroll-pane">
+    <app-section-card title="Details">
+      <app-ticket-details [ticket]="ticket" />
+    </app-section-card>
+  </div>
+</div>

@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: agenticshop
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5438/agenticshop}
+    username: ${DB_USER:agenticshop}
+    password: ${DB_PASSWORD:agenticshop}
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_batch_fetch_size: 50
+        jdbc.time_zone: UTC
+  flyway:
+    locations: classpath:db/migration,classpath:db/seed
+    placeholders:
+      seed_customers: ${SEED_CUSTOMERS:20000}
+      seed_sellers: ${SEED_SELLERS:500}
+      seed_products: ${SEED_PRODUCTS:50000}
+      seed_orders: ${SEED_ORDERS:100000}
+      seed_tickets: ${SEED_TICKETS:15000}
+
+server:
+  port: ${PORT:8080}
+  error:
+    include-message: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+---
+# Schema only, no fake data
+spring:
+  config:
+    activate:
+      on-profile: noseed
+  flyway:
+    locations: classpath:db/migration

@@ -1,0 +1,31 @@
+@import 'abstracts';
+
+:host {
+  display: block;
+  font-size: $font-size-sm;
+}
+
+// Header stays visible while the surrounding scroll pane scrolls.
+thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: $app-surface;
+  font-weight: $font-weight-semibold;
+  color: $text-muted;
+  white-space: nowrap;
+  box-shadow: inset 0 -1px 0 $app-border-color;
+}
+
+th,
+td {
+  padding-inline: map-get($spacers, 3);
+}
+
+td {
+  max-width: 18rem;
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
