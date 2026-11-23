@@ -1,10 +1,11 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Params, RouterLink } from '@angular/router';
 
 export interface Crumb {
   label: string;
   /** Router link; omit for the current (last) crumb. */
   link?: string | (string | number)[];
+  queryParams?: Params;
 }
 
 @Component({
@@ -15,9 +16,13 @@ export interface Crumb {
     <nav aria-label="Breadcrumb">
       <ol class="breadcrumb small mb-2">
         @for (crumb of items(); track $index; let last = $last) {
-          <li class="breadcrumb-item" [class.active]="last" [attr.aria-current]="last ? 'page' : null">
+          <li
+            class="breadcrumb-item"
+            [class.active]="last"
+            [attr.aria-current]="last ? 'page' : null"
+          >
             @if (crumb.link && !last) {
-              <a [routerLink]="crumb.link">{{ crumb.label }}</a>
+              <a [routerLink]="crumb.link" [queryParams]="crumb.queryParams">{{ crumb.label }}</a>
             } @else {
               {{ crumb.label }}
             }

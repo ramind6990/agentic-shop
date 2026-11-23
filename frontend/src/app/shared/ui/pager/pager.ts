@@ -1,9 +1,9 @@
 import { DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 type PageSlot = number | 'gap';
 
-/** Display-only pager for PageResponse results (page index is 0-based, labels are 1-based). */
+/** Pager for PageResponse results (page index is 0-based, labels are 1-based). Emits the chosen page index. */
 @Component({
   selector: 'app-pager',
   imports: [DecimalPipe],
@@ -16,7 +16,15 @@ type PageSlot = number | 'gap';
       <nav aria-label="Pagination">
         <ul class="pagination pagination-sm mb-0">
           <li class="page-item" [class.disabled]="page() === 0">
-            <button type="button" class="page-link" aria-label="Previous page">&lsaquo;</button>
+            <button
+              type="button"
+              class="page-link"
+              aria-label="Previous page"
+              [disabled]="page() === 0"
+              (click)="go(page() - 1)"
+            >
+              &lsaquo;
+            </button>
           </li>
           @for (slot of slots(); track $index) {
             @if (slot === 'gap') {
@@ -27,6 +35,7 @@ type PageSlot = number | 'gap';
                   type="button"
                   class="page-link num"
                   [attr.aria-current]="slot === page() ? 'page' : null"
+                  (click)="go(slot)"
                 >
                   {{ slot + 1 | number }}
                 </button>
@@ -34,7 +43,15 @@ type PageSlot = number | 'gap';
             }
           }
           <li class="page-item" [class.disabled]="page() >= totalPages() - 1">
-            <button type="button" class="page-link" aria-label="Next page">&rsaquo;</button>
+            <button
+              type="button"
+              class="page-link"
+              aria-label="Next page"
+              [disabled]="page() >= totalPages() - 1"
+              (click)="go(page() + 1)"
+            >
+              &rsaquo;
+            </button>
           </li>
         </ul>
       </nav>
@@ -46,6 +63,7 @@ export class Pager {
   readonly size = input.required<number>();
   readonly totalElements = input.required<number>();
   readonly totalPages = input.required<number>();
+  readonly pageChange = output<number>();
 
   protected readonly firstRow = computed(() =>
     this.totalElements() === 0 ? 0 : this.page() * this.size() + 1,
@@ -77,4 +95,10 @@ export class Pager {
     });
     return result;
   });
+
+  protected go(page: number): void {
+    if (page !== this.page() && page >= 0 && page < this.totalPages()) {
+      this.pageChange.emit(page);
+    }
+  }
 }

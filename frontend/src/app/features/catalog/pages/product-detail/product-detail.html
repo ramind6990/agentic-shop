@@ -1,78 +1,100 @@
-<app-breadcrumbs [items]="crumbs" />
-
-<div class="row g-4 mb-4">
-  <div class="col-md-5 col-xl-4">
-    <app-product-gallery [images]="product.images" />
+@if (store.notFound()) {
+  <div class="panel p-4 text-center">
+    <h1 class="h5">Product not found</h1>
+    <p class="text-body-secondary">There is no product with this id.</p>
+    <a routerLink="/products" class="btn btn-sm btn-outline-secondary">Back to products</a>
   </div>
+} @else {
+  <app-load-state
+    [loading]="store.productLoading()"
+    [error]="store.productError()"
+    [hasValue]="!!store.product()"
+    (retry)="store.reloadProduct()"
+  >
+    @if (store.product(); as product) {
+      <app-breadcrumbs [items]="crumbs()" />
 
-  <div class="col-md-7 col-xl-8">
-    <div class="panel p-4 h-100">
-      <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-        <span class="text-body-secondary">{{ product.brand.name }}</span>
-        <app-status-badge [status]="product.status" />
+      <div class="row g-4 mb-4">
+        <div class="col-md-5 col-xl-4">
+          <app-product-gallery [images]="product.images" />
+        </div>
+
+        <div class="col-md-7 col-xl-8">
+          <div class="panel p-4 h-100">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+              <span class="text-body-secondary">{{ product.brand.name }}</span>
+              <app-status-badge [status]="product.status" />
+            </div>
+            <h1 class="h4 mb-2">{{ product.title }}</h1>
+
+            <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+              <app-star-rating [value]="product.ratingAvg" [count]="product.ratingCount" />
+              <span class="small text-body-secondary num"
+                >{{ product.salesCount | number }} sold</span
+              >
+            </div>
+
+            <app-price
+              class="d-block fs-4 mb-3"
+              [price]="product.price"
+              [listPrice]="product.listPrice"
+              [currency]="product.currency"
+            />
+
+            <p class="mb-4">
+              @if (product.stock.inStock) {
+                <span class="text-success-emphasis fw-semibold">In stock</span>
+                <span class="text-body-secondary num">
+                  · {{ product.stock.available | number }} available in
+                  {{ product.stock.warehouseCode }}</span
+                >
+              } @else {
+                <span class="text-danger-emphasis fw-semibold">Out of stock</span>
+                @if (product.stock.restockEta) {
+                  <span class="text-body-secondary">
+                    · restock expected {{ product.stock.restockEta | date: 'mediumDate' }}</span
+                  >
+                }
+              }
+            </p>
+
+            <dl class="row small mb-0">
+              <dt class="col-sm-3 fw-normal text-body-secondary">Sold by</dt>
+              <dd class="col-sm-9">
+                <a [routerLink]="['/sellers', product.seller.id]">{{ product.seller.name }}</a>
+              </dd>
+              <dt class="col-sm-3 fw-normal text-body-secondary">SKU</dt>
+              <dd class="col-sm-9 font-monospace">{{ product.sku }}</dd>
+              <dt class="col-sm-3 fw-normal text-body-secondary">Category</dt>
+              <dd class="col-sm-9">{{ product.breadcrumbs.at(-1)?.name }}</dd>
+              <dt class="col-sm-3 fw-normal text-body-secondary">Listed</dt>
+              <dd class="col-sm-9 mb-0">
+                <time [attr.datetime]="product.createdAt">{{
+                  product.createdAt | date: 'mediumDate'
+                }}</time>
+              </dd>
+            </dl>
+          </div>
+        </div>
       </div>
-      <h1 class="h4 mb-2">{{ product.title }}</h1>
 
-      <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
-        <app-star-rating [value]="product.ratingAvg" [count]="product.ratingCount" />
-        <span class="small text-body-secondary num">{{ product.salesCount | number }} sold</span>
+      <div class="row g-4">
+        <div class="col-lg-5 d-flex flex-column gap-4">
+          <app-section-card title="Specifications" [flush]="true">
+            <app-product-attributes [attributes]="product.attributes" />
+          </app-section-card>
+
+          <app-section-card title="Description">
+            <p class="description mb-0 small">{{ product.description }}</p>
+          </app-section-card>
+        </div>
+
+        <div class="col-lg-7">
+          <app-section-card title="Customer reviews">
+            <app-product-reviews />
+          </app-section-card>
+        </div>
       </div>
-
-      <app-price
-        class="d-block fs-4 mb-3"
-        [price]="product.price"
-        [listPrice]="product.listPrice"
-        [currency]="product.currency"
-      />
-
-      <p class="mb-4">
-        @if (product.stock.inStock) {
-          <span class="text-success-emphasis fw-semibold">In stock</span>
-          <span class="text-body-secondary num">
-            · {{ product.stock.available | number }} available in {{ product.stock.warehouseCode }}</span
-          >
-        } @else {
-          <span class="text-danger-emphasis fw-semibold">Out of stock</span>
-          @if (product.stock.restockEta) {
-            <span class="text-body-secondary">
-              · restock expected {{ product.stock.restockEta | date: 'mediumDate' }}</span
-            >
-          }
-        }
-      </p>
-
-      <dl class="row small mb-0">
-        <dt class="col-sm-3 fw-normal text-body-secondary">Sold by</dt>
-        <dd class="col-sm-9">
-          <a [routerLink]="['/sellers', product.seller.id]">{{ product.seller.name }}</a>
-        </dd>
-        <dt class="col-sm-3 fw-normal text-body-secondary">SKU</dt>
-        <dd class="col-sm-9 font-monospace">{{ product.sku }}</dd>
-        <dt class="col-sm-3 fw-normal text-body-secondary">Category</dt>
-        <dd class="col-sm-9">{{ product.breadcrumbs.at(-1)?.name }}</dd>
-        <dt class="col-sm-3 fw-normal text-body-secondary">Listed</dt>
-        <dd class="col-sm-9 mb-0">
-          <time [attr.datetime]="product.createdAt">{{ product.createdAt | date: 'mediumDate' }}</time>
-        </dd>
-      </dl>
-    </div>
-  </div>
-</div>
-
-<div class="row g-4">
-  <div class="col-lg-5 d-flex flex-column gap-4">
-    <app-section-card title="Specifications" [flush]="true">
-      <app-product-attributes [attributes]="product.attributes" />
-    </app-section-card>
-
-    <app-section-card title="Description">
-      <p class="description mb-0 small">{{ product.description }}</p>
-    </app-section-card>
-  </div>
-
-  <div class="col-lg-7">
-    <app-section-card title="Customer reviews">
-      <app-product-reviews [summary]="ratingSummary" [reviews]="reviews" />
-    </app-section-card>
-  </div>
-</div>
+    }
+  </app-load-state>
+}

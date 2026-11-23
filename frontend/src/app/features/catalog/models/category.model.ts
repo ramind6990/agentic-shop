@@ -13,3 +13,12 @@ export interface CategoryNode extends CategoryRef {
   leaf: boolean;
   children: CategoryNode[];
 }
+
+/** GET /api/categories/{idOrSlug}. `breadcrumbs` runs from the root down to this category (inclusive). */
+export interface CategoryDetail extends CategoryRef {
+  level: number;
+  leaf: boolean;
+  description: string | null;
+  breadcrumbs: CategoryRef[];
+  children: CategoryRef[];
+}

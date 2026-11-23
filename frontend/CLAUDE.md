@@ -10,7 +10,10 @@ data served by the Spring Boot backend in `../backend`. The backend is the sourc
 `../docs/ShopOps_Agentic_Practice_Plan.pdf` for the overall roadmap. The base app is meant to stay simple: its job is
 to show realistic data, not to be a polished product.
 
-Current state: an empty Angular 21.2 skeleton (standalone components, zoneless, SCSS, routing on, no SSR).
+Current state: Angular 21.2 (standalone components, zoneless, SCSS, routing on, no SSR). Every screen is built; the
+catalog product search and detail pages load real data, the rest still use mocks. The data-layer pattern (API
+services, URL-driven page stores, `loadOnChange`) is described in `../docs/frontend-skeleton.md` under "Data layer".
+Don't use `rxResource` / `httpResource` (experimental in v21); use `loadOnChange` from `src/app/shared/data`.
 
 ## Commands
 

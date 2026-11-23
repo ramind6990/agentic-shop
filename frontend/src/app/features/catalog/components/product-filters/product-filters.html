@@ -1,112 +1,211 @@
 <div class="panel px-3">
-  <app-filter-section title="Category">
-    <ul class="list-unstyled small mb-0">
-      @for (name of categoryPath(); track $index; let last = $last) {
-        @if (!last) {
-          <li class="text-body-secondary" [style.padding-left.rem]="$index * 0.75">‹ {{ name }}</li>
-        }
+  <app-load-state
+    [loading]="store.facetsLoading()"
+    [error]="store.facetsError()"
+    [hasValue]="!!store.facets()"
+    (retry)="store.reload()"
+  >
+    @if (store.facets(); as facets) {
+      <app-filter-section title="Category">
+        <ul class="list-unstyled small mb-0">
+          @if (query().categoryId !== null) {
+            <li>
+              <button
+                type="button"
+                class="btn btn-link btn-sm p-0"
+                (click)="store.selectCategory(null)"
+              >
+                ‹ All categories
+              </button>
+            </li>
+          }
+          @for (ancestor of ancestors(); track ancestor.id) {
+            <li [style.padding-left.rem]="($index + 1) * 0.75">
+              <button
+                type="button"
+                class="btn btn-link btn-sm p-0"
+                (click)="store.selectCategory(ancestor.id)"
+              >
+                ‹ {{ ancestor.name }}
+              </button>
+            </li>
+          }
+          @if (store.category(); as current) {
+            <li
+              class="fw-semibold py-1"
+              [style.padding-left.rem]="ancestors().length * 0.75 + 0.75"
+            >
+              {{ current.name }}
+            </li>
+          }
+          @for (category of facets.categories; track category.id) {
+            <li
+              class="d-flex justify-content-between align-items-center py-1"
+              [style.padding-left.rem]="(store.category()?.breadcrumbs?.length ?? 0) * 0.75 + 0.75"
+            >
+              <button
+                type="button"
+                class="btn btn-link btn-sm p-0 text-start text-body"
+                (click)="store.selectCategory(category.id)"
+              >
+                {{ category.name }}
+              </button>
+              <span class="text-body-secondary num">{{ category.count | number }}</span>
+            </li>
+          }
+        </ul>
+      </app-filter-section>
+
+      @if (facets.brands.length > 0) {
+        <app-filter-section title="Brand">
+          @for (brand of facets.brands; track brand.value) {
+            <div class="form-check facet-option">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                [id]="'brand-' + brand.value"
+                [checked]="selectedBrands().has(brand.value)"
+                (change)="store.toggleBrand(+brand.value)"
+              />
+              <label class="form-check-label" [for]="'brand-' + brand.value">{{
+                brand.label
+              }}</label>
+              <span class="facet-count num">{{ brand.count | number }}</span>
+            </div>
+          }
+        </app-filter-section>
       }
-      @for (category of facets().categories; track category.id) {
-        <li
-          class="d-flex justify-content-between py-1"
-          [style.padding-left.rem]="(categoryPath().length - 1) * 0.75"
-        >
-          <span [class.fw-semibold]="category.name === categoryPath().at(-1)">{{ category.name }}</span>
-          <span class="text-body-secondary num">{{ category.count | number }}</span>
-        </li>
-      }
-    </ul>
-  </app-filter-section>
 
-  <app-filter-section title="Brand">
-    @for (brand of facets().brands; track brand.value) {
-      <div class="form-check facet-option">
-        <input class="form-check-input" type="checkbox" [id]="'brand-' + brand.value" />
-        <label class="form-check-label" [for]="'brand-' + brand.value">{{ brand.label }}</label>
-        <span class="facet-count num">{{ brand.count | number }}</span>
-      </div>
-    }
-  </app-filter-section>
+      <app-filter-section title="Price">
+        <div class="d-flex align-items-center gap-2">
+          <label for="price-min" class="visually-hidden">Minimum price</label>
+          <input
+            #priceMin
+            id="price-min"
+            type="number"
+            min="0"
+            class="form-control form-control-sm"
+            [placeholder]="facets.price.min | number: '1.0-0'"
+            [value]="query().minPrice ?? ''"
+            (change)="onPriceChange(priceMin.value, priceMax.value)"
+          />
+          <span class="text-body-secondary" aria-hidden="true">–</span>
+          <label for="price-max" class="visually-hidden">Maximum price</label>
+          <input
+            #priceMax
+            id="price-max"
+            type="number"
+            min="0"
+            class="form-control form-control-sm"
+            [placeholder]="facets.price.max | number: '1.0-0'"
+            [value]="query().maxPrice ?? ''"
+            (change)="onPriceChange(priceMin.value, priceMax.value)"
+          />
+        </div>
+      </app-filter-section>
 
-  <app-filter-section title="Price">
-    <div class="d-flex align-items-center gap-2">
-      <label for="price-min" class="visually-hidden">Minimum price</label>
-      <input
-        id="price-min"
-        type="number"
-        class="form-control form-control-sm"
-        [placeholder]="facets().price.min | number: '1.0-0'"
-      />
-      <span class="text-body-secondary" aria-hidden="true">–</span>
-      <label for="price-max" class="visually-hidden">Maximum price</label>
-      <input
-        id="price-max"
-        type="number"
-        class="form-control form-control-sm"
-        [placeholder]="facets().price.max | number: '1.0-0'"
-      />
-    </div>
-  </app-filter-section>
-
-  <app-filter-section title="Customer rating">
-    @for (rating of facets().ratings; track rating.value) {
-      <div class="form-check facet-option">
-        <input class="form-check-input" type="radio" name="min-rating" [id]="'rating-' + rating.value" />
-        <label class="form-check-label" [for]="'rating-' + rating.value">{{ rating.label }}</label>
-        <span class="facet-count num">{{ rating.count | number }}</span>
-      </div>
-    }
-  </app-filter-section>
-
-  @for (attribute of facets().attributes; track attribute.code) {
-    <app-filter-section [title]="attribute.name">
-      @if (attribute.values.length > 0) {
-        @for (option of attribute.values; track option.value) {
+      <app-filter-section title="Customer rating">
+        @for (rating of facets.ratings; track rating.value) {
           <div class="form-check facet-option">
             <input
               class="form-check-input"
-              type="checkbox"
-              [id]="'attr-' + attribute.code + '-' + option.value"
+              type="radio"
+              name="min-rating"
+              [id]="'rating-' + rating.value"
+              [checked]="query().minRating === +rating.value"
+              (change)="onRating(rating.value)"
             />
-            <label class="form-check-label" [for]="'attr-' + attribute.code + '-' + option.value">
-              {{ option.label }}
-            </label>
-            <span class="facet-count num">{{ option.count | number }}</span>
+            <label class="form-check-label" [for]="'rating-' + rating.value">{{
+              rating.label
+            }}</label>
+            <span class="facet-count num">{{ rating.count | number }}</span>
           </div>
         }
-      } @else if (attribute.range) {
-        <div class="d-flex align-items-center gap-2">
-          <label [for]="'attr-' + attribute.code + '-min'" class="visually-hidden">
-            Minimum {{ attribute.name }}
-          </label>
-          <input
-            [id]="'attr-' + attribute.code + '-min'"
-            type="number"
-            class="form-control form-control-sm"
-            [placeholder]="attribute.range.min"
-          />
-          <span class="text-body-secondary" aria-hidden="true">–</span>
-          <label [for]="'attr-' + attribute.code + '-max'" class="visually-hidden">
-            Maximum {{ attribute.name }}
-          </label>
-          <input
-            [id]="'attr-' + attribute.code + '-max'"
-            type="number"
-            class="form-control form-control-sm"
-            [placeholder]="attribute.range.max"
-          />
-          @if (attribute.unit) {
-            <span class="small text-body-secondary">{{ attribute.unit }}</span>
-          }
-        </div>
-      }
-    </app-filter-section>
-  }
+        @if (query().minRating !== null) {
+          <button type="button" class="btn btn-link btn-sm p-0" (click)="store.setMinRating(null)">
+            Any rating
+          </button>
+        }
+      </app-filter-section>
 
-  <div class="py-3">
-    <div class="form-check form-switch">
-      <input class="form-check-input" type="checkbox" role="switch" id="in-stock" />
-      <label class="form-check-label" for="in-stock">In stock only</label>
-    </div>
-  </div>
+      @for (attribute of facets.attributes; track attribute.code) {
+        <app-filter-section [title]="attribute.name">
+          @if (attribute.values.length > 0) {
+            @for (option of attribute.values; track option.value) {
+              <div class="form-check facet-option">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  [id]="'attr-' + attribute.code + '-' + option.value"
+                  [checked]="isAttributeSelected(attribute.code, option.value)"
+                  (change)="store.toggleAttributeValue(attribute.code, option.value)"
+                />
+                <label
+                  class="form-check-label"
+                  [for]="'attr-' + attribute.code + '-' + option.value"
+                >
+                  {{ option.label }}
+                </label>
+                <span class="facet-count num">{{ option.count | number }}</span>
+              </div>
+            }
+          } @else if (attribute.range) {
+            <div class="d-flex align-items-center gap-2">
+              <label [for]="'attr-' + attribute.code + '-min'" class="visually-hidden">
+                Minimum {{ attribute.name }}
+              </label>
+              <input
+                #rangeMin
+                [id]="'attr-' + attribute.code + '-min'"
+                type="number"
+                class="form-control form-control-sm"
+                [placeholder]="attribute.range.min"
+                [value]="rangeValue(attribute.code, 'min') ?? ''"
+                (change)="onRangeChange(attribute.code, rangeMin.value, rangeMax.value)"
+              />
+              <span class="text-body-secondary" aria-hidden="true">–</span>
+              <label [for]="'attr-' + attribute.code + '-max'" class="visually-hidden">
+                Maximum {{ attribute.name }}
+              </label>
+              <input
+                #rangeMax
+                [id]="'attr-' + attribute.code + '-max'"
+                type="number"
+                class="form-control form-control-sm"
+                [placeholder]="attribute.range.max"
+                [value]="rangeValue(attribute.code, 'max') ?? ''"
+                (change)="onRangeChange(attribute.code, rangeMin.value, rangeMax.value)"
+              />
+              @if (attribute.unit) {
+                <span class="small text-body-secondary">{{ attribute.unit }}</span>
+              }
+            </div>
+          }
+        </app-filter-section>
+      }
+
+      <div class="py-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div class="form-check form-switch mb-0">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            role="switch"
+            id="in-stock"
+            [checked]="query().inStock"
+            (change)="onInStock($event)"
+          />
+          <label class="form-check-label" for="in-stock">In stock only</label>
+        </div>
+        @if (store.hasFilters()) {
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary"
+            (click)="store.clearFilters()"
+          >
+            Clear filters
+          </button>
+        }
+      </div>
+    }
+  </app-load-state>
 </div>

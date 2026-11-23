@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 
 import { Breadcrumbs, Crumb } from '../../../../shared/ui/breadcrumbs/breadcrumbs';
+import { LoadState } from '../../../../shared/ui/load-state/load-state';
 import { Price } from '../../../../shared/ui/price/price';
 import { SectionCard } from '../../../../shared/ui/section-card/section-card';
 import { StarRating } from '../../../../shared/ui/star-rating/star-rating';
@@ -10,13 +11,9 @@ import { StatusBadge } from '../../../../shared/ui/status-badge/status-badge';
 import { ProductAttributes } from '../../components/product-attributes/product-attributes';
 import { ProductGallery } from '../../components/product-gallery/product-gallery';
 import { ProductReviews } from '../../components/product-reviews/product-reviews';
-import {
-  MOCK_PRODUCT_DETAIL,
-  MOCK_RATING_SUMMARY,
-  MOCK_REVIEW_PAGE,
-} from '../../mocks/product-detail.mock';
+import { ProductDetailStore } from '../../state/product-detail.store';
 
-/** Product detail: gallery, buy-box style summary, description, specifications and reviews. Mock data for now. */
+/** Product detail: gallery, buy-box style summary, description, specifications and reviews. */
 @Component({
   selector: 'app-product-detail',
   imports: [
@@ -24,6 +21,7 @@ import {
     DecimalPipe,
     RouterLink,
     Breadcrumbs,
+    LoadState,
     Price,
     SectionCard,
     StarRating,
@@ -32,21 +30,28 @@ import {
     ProductGallery,
     ProductReviews,
   ],
+  providers: [ProductDetailStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './product-detail.html',
   styleUrl: './product-detail.scss',
 })
 export class ProductDetailPage {
-  /** Route parameter; unused until the API is wired (the mock product is always shown). */
-  readonly id = input<string>();
+  protected readonly store = inject(ProductDetailStore);
 
-  protected readonly product = MOCK_PRODUCT_DETAIL;
-  protected readonly ratingSummary = MOCK_RATING_SUMMARY;
-  protected readonly reviews = MOCK_REVIEW_PAGE;
-
-  protected readonly crumbs: Crumb[] = [
-    { label: 'Products', link: '/products' },
-    ...this.product.breadcrumbs.map((c) => ({ label: c.name, link: '/products' })),
-    { label: this.product.sku },
-  ];
+  /** Products › category path (each links to the search filtered on it) › SKU. */
+  protected readonly crumbs = computed<Crumb[]>(() => {
+    const product = this.store.product();
+    if (!product) {
+      return [];
+    }
+    return [
+      { label: 'Products', link: '/products' },
+      ...product.breadcrumbs.map((c) => ({
+        label: c.name,
+        link: '/products',
+        queryParams: { categoryId: c.id },
+      })),
+      { label: product.sku },
+    ];
+  });
 }
