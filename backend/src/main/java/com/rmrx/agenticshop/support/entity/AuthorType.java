@@ -4,5 +4,6 @@ public enum AuthorType {
     CUSTOMER,
     STAFF,
     SELLER,
-    SYSTEM
+    SYSTEM,
+    AI
 }

@@ -6,6 +6,9 @@ import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;
 
@@ -37,4 +40,17 @@ public class TicketMessage extends BaseEntity {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private MessageKind kind = MessageKind.TEXT;
+
+    /** Structured agent reply (ENVELOPE) or action detail (ACTION); null for plain text. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private JsonNode payload;
+
+    /** Version of the payload schema; null when there is no payload. */
+    @Column(name = "schema_version")
+    private Integer schemaVersion;
 }
