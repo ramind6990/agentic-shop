@@ -35,6 +35,8 @@ app:
   ai:
     # Off by default: no model beans, the rest of the app runs as before.
     enabled: ${AI_ENABLED:false}
+    # Dev-only /api/ai/dev/** endpoints (model ping, JSON round-trip check). Never enable in production.
+    # dev-endpoints: true
     openai:
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}

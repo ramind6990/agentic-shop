@@ -9,10 +9,12 @@ import java.time.Duration;
  * {@code app.ai.*}: switches, OpenAI connection, model choices and agent limits.
  *
  * <p>With {@code enabled=false} (the default) no model beans are created and the rest of the app runs as before.
+ * {@code dev-endpoints=true} exposes {@code /api/ai/dev/**} (model ping, JSON round-trip check); never in production.
  */
 @ConfigurationProperties("app.ai")
 public record AiProperties(
         @DefaultValue("false") boolean enabled,
+        @DefaultValue("false") boolean devEndpoints,
         @DefaultValue OpenAi openai,
         @DefaultValue Chat chat,
         @DefaultValue Embedding embedding,

@@ -1,7 +1,11 @@
 package com.rmrx.agenticshop.ai.config;
 
+import com.rmrx.agenticshop.ai.usage.RecordingEmbeddingModel;
+import com.rmrx.agenticshop.ai.usage.UsageChatModelListener;
+import com.rmrx.agenticshop.ai.usage.UsageRecorder;
 import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.listener.ChatModelListener;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
@@ -13,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -38,9 +43,14 @@ public class AiConfig {
     static class Models {
 
         private final AiProperties props;
+        /** Bills every chat call to the bound RunScope and traces it. */
+        private final List<ChatModelListener> listeners;
+        private final UsageRecorder usageRecorder;
 
-        Models(AiProperties props) {
+        Models(AiProperties props, UsageChatModelListener usageListener, UsageRecorder usageRecorder) {
             this.props = props;
+            this.listeners = List.of(usageListener);
+            this.usageRecorder = usageRecorder;
             if (!props.openai().hasApiKey()) {
                 throw new IllegalStateException("app.ai.enabled=true but OPENAI_API_KEY is not set");
             }
@@ -73,14 +83,16 @@ public class AiConfig {
                     .timeout(chat.timeout())
                     .logRequests(openai.logRequests())
                     .logResponses(openai.logResponses())
+                    .listeners(listeners)
                     .build();
         }
 
+        /** The OpenAI embedding model wrapped so every call is written to the usage ledger. */
         @Bean
         EmbeddingModel aiEmbeddingModel() {
             AiProperties.OpenAi openai = props.openai();
             AiProperties.Embedding embedding = props.embedding();
-            return OpenAiEmbeddingModel.builder()
+            EmbeddingModel model = OpenAiEmbeddingModel.builder()
                     .baseUrl(openai.baseUrl())
                     .apiKey(openai.apiKey())
                     .modelName(embedding.model())
@@ -89,6 +101,7 @@ public class AiConfig {
                     .logRequests(openai.logRequests())
                     .logResponses(openai.logResponses())
                     .build();
+            return new RecordingEmbeddingModel(model, usageRecorder, UsageRecorder.OPENAI, embedding.model());
         }
 
         private ChatModel chatModel(String model) {
@@ -103,6 +116,7 @@ public class AiConfig {
                     .timeout(chat.timeout())
                     .logRequests(openai.logRequests())
                     .logResponses(openai.logResponses())
+                    .listeners(listeners)
                     .build();
         }
     }
