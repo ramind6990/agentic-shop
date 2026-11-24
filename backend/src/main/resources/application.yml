@@ -63,6 +63,11 @@ app:
       timeout-rate: 0
       malformed-rate: 0
       extra-latency: 0ms
+    events:
+      # closed runs stay replayable this long, so a late reconnect still gets the final event
+      retention: 5m
+      buffer-size: 2000
+      heartbeat: 15s
 
 server:
   port: ${PORT:8080}

@@ -20,7 +20,8 @@ public record AiProperties(
         @DefaultValue Embedding embedding,
         @DefaultValue Agent agent,
         @DefaultValue Mock mock,
-        @DefaultValue FailureInjection failureInjection) {
+        @DefaultValue FailureInjection failureInjection,
+        @DefaultValue Events events) {
 
     /** OpenAI connection. The key comes from {@code OPENAI_API_KEY}; never commit it. */
     public record OpenAi(
@@ -85,5 +86,15 @@ public record AiProperties(
         public boolean active() {
             return errorRate > 0 || timeoutRate > 0 || malformedRate > 0 || !extraLatency.isZero();
         }
+    }
+
+    /**
+     * Live run events (in memory, never persisted): how long a closed run's buffer stays replayable, how many
+     * events a run keeps, and how often an open SSE stream gets a heartbeat comment.
+     */
+    public record Events(
+            @DefaultValue("5m") Duration retention,
+            @DefaultValue("2000") int bufferSize,
+            @DefaultValue("15s") Duration heartbeat) {
     }
 }
