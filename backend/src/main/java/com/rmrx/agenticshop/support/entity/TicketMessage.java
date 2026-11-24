@@ -53,4 +53,33 @@ public class TicketMessage extends BaseEntity {
     /** Version of the payload schema; null when there is no payload. */
     @Column(name = "schema_version")
     private Integer schemaVersion;
+
+    /** A plain TEXT message written by a person. */
+    public static TicketMessage text(Ticket ticket, AppUser author, AuthorType authorType, String body,
+                                     boolean internal, Instant now) {
+        TicketMessage m = new TicketMessage();
+        m.ticket = ticket;
+        m.author = author;
+        m.authorType = authorType;
+        m.body = body;
+        m.internal = internal;
+        m.createdAt = now;
+        m.kind = MessageKind.TEXT;
+        return m;
+    }
+
+    /** A structured agent reply (ENVELOPE) authored by the AI: body is the reply text, payload the full envelope. */
+    public static TicketMessage envelope(Ticket ticket, String body, JsonNode payload, int schemaVersion,
+                                         boolean internal, Instant now) {
+        TicketMessage m = new TicketMessage();
+        m.ticket = ticket;
+        m.authorType = AuthorType.AI;
+        m.body = body;
+        m.internal = internal;
+        m.createdAt = now;
+        m.kind = MessageKind.ENVELOPE;
+        m.payload = payload;
+        m.schemaVersion = schemaVersion;
+        return m;
+    }
 }

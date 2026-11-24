@@ -57,12 +57,20 @@ public record AiProperties(
 
     /**
      * Agent limits: max model/tool iterations per turn, how many recent turns go into the prompt, and the overall
-     * time budget of one turn.
+     * time budget of one turn. composeMode picks how the final reply decides its status, shown results and
+     * suggestions: {@code llm} (one structured-output call, falling back to deterministic on any failure) or
+     * {@code deterministic} (rules only, no extra model call).
      */
     public record Agent(
             @DefaultValue("8") int stepBudget,
             @DefaultValue("12") int historyWindow,
-            @DefaultValue("120s") Duration turnTimeout) {
+            @DefaultValue("120s") Duration turnTimeout,
+            @DefaultValue("llm") ComposeMode composeMode) {
+    }
+
+    public enum ComposeMode {
+        LLM,
+        DETERMINISTIC
     }
 
     /**

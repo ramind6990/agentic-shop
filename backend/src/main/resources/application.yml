@@ -55,6 +55,8 @@ app:
       step-budget: 8
       history-window: 12
       turn-timeout: 120s
+      # how the final reply picks status, shown results and quick replies: llm (structured output) | deterministic
+      compose-mode: ${AI_COMPOSE_MODE:llm}
     mock:
       default-scenario: happy
       scenario-header-enabled: false

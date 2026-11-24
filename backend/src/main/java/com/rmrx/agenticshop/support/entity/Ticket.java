@@ -60,4 +60,41 @@ public class Ticket extends BaseEntity {
 
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
+
+    /**
+     * A new ticket opened by a customer. ticketNumber must be unique; when it derives from the id, save with a
+     * temporary number first and then call {@link #assignNumber}.
+     */
+    public static Ticket open(String ticketNumber, AppUser customer, CustomerOrder order, Seller seller,
+                              String subject, TicketCategory category, TicketPriority priority, SupportTier tier,
+                              Instant now) {
+        Ticket t = new Ticket();
+        t.ticketNumber = ticketNumber;
+        t.customer = customer;
+        t.order = order;
+        t.seller = seller;
+        t.subject = subject;
+        t.category = category;
+        t.status = TicketStatus.OPEN;
+        t.priority = priority;
+        t.tier = tier;
+        t.createdAt = now;
+        t.updatedAt = now;
+        return t;
+    }
+
+    /** Sets the final ticket number of a just-created ticket. */
+    public void assignNumber(String ticketNumber) {
+        this.ticketNumber = ticketNumber;
+    }
+
+    public void changeStatus(TicketStatus status, Instant now) {
+        this.status = status;
+        this.updatedAt = now;
+    }
+
+    /** Records activity (a new message) on the ticket. */
+    public void touch(Instant now) {
+        this.updatedAt = now;
+    }
 }

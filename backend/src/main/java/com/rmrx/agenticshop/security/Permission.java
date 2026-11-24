@@ -25,5 +25,7 @@ public enum Permission {
     /** Any user's AI token usage and cost. */
     AI_USAGE_READ_ALL,
     /** Agent run traces (model and tool steps). */
-    AI_TRACE_READ
+    AI_TRACE_READ,
+    /** Chat with the support assistant: customers in their own tickets, support staff in visible tickets. */
+    AI_CHAT
 }
