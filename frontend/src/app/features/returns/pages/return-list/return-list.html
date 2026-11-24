@@ -1,48 +1,77 @@
-<app-list-layout title="Returns" noun="return requests" [result]="result">
+<app-list-layout
+  title="Returns"
+  noun="return requests"
+  [result]="store.result()"
+  [loading]="store.loading()"
+  [error]="store.error()"
+  (pageChange)="store.list.setPage($event)"
+  (retry)="store.reload()"
+>
   <form slot="filters" class="row g-2 align-items-end" role="search" aria-label="Filter returns">
     <div class="col-6 col-md-4 col-xl-2">
       <label for="ret-status" class="form-label small mb-1">Status</label>
-      <select id="ret-status" class="form-select form-select-sm">
+      <select id="ret-status" appFilter="status" class="form-select form-select-sm">
         <option value="">Any status</option>
-        @for (o of statusOptions; track o.value) {
+        @for (o of store.statusOptions(); track o.value) {
           <option [value]="o.value">{{ o.label }}</option>
         }
       </select>
     </div>
     <div class="col-6 col-md-4 col-xl-2">
       <label for="ret-reason" class="form-label small mb-1">Reason</label>
-      <select id="ret-reason" class="form-select form-select-sm">
+      <select id="ret-reason" appFilter="reason" class="form-select form-select-sm">
         <option value="">Any reason</option>
-        @for (o of reasonOptions; track o.value) {
+        @for (o of store.reasonOptions(); track o.value) {
           <option [value]="o.value">{{ o.label }}</option>
         }
       </select>
     </div>
-    <div class="col-6 col-md-4 col-xl-2">
-      <label for="ret-seller" class="form-label small mb-1">Seller</label>
-      <select id="ret-seller" class="form-select form-select-sm">
-        <option value="">Any seller</option>
-        @for (s of sellers; track s.id) {
-          <option [value]="s.id">{{ s.name }}</option>
-        }
-      </select>
+    <div class="col-6 col-md-4 col-xl-1">
+      <label for="ret-seller" class="form-label small mb-1">Seller ID</label>
+      <input
+        id="ret-seller"
+        appFilter="sellerId"
+        type="number"
+        min="1"
+        class="form-control form-control-sm"
+        placeholder="171"
+      />
     </div>
     <div class="col-6 col-md-4 col-xl-1">
       <label for="ret-customer" class="form-label small mb-1">Customer ID</label>
-      <input id="ret-customer" type="number" class="form-control form-control-sm" placeholder="3310" />
+      <input
+        id="ret-customer"
+        appFilter="customerId"
+        type="number"
+        min="1"
+        class="form-control form-control-sm"
+        placeholder="3310"
+      />
     </div>
     <div class="col-6 col-md-4 col-xl-2">
       <label for="ret-from" class="form-label small mb-1">Opened from</label>
-      <input id="ret-from" type="date" class="form-control form-control-sm" />
+      <input id="ret-from" appFilter="from" type="date" class="form-control form-control-sm" />
     </div>
     <div class="col-6 col-md-4 col-xl-2">
       <label for="ret-to" class="form-label small mb-1">To</label>
-      <input id="ret-to" type="date" class="form-control form-control-sm" />
+      <input id="ret-to" appFilter="to" type="date" class="form-control form-control-sm" />
     </div>
-    <div class="col-12 col-xl-1">
-      <button type="reset" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+    <div class="col-12 col-xl-2">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary w-100"
+        [disabled]="!store.list.hasFilters()"
+        (click)="store.list.clear()"
+      >
+        Clear
+      </button>
     </div>
   </form>
 
-  <app-data-table caption="Return requests, newest first" [rows]="result.content" [columns]="columns" [rowId]="rowId" />
+  <app-data-table
+    caption="Return requests, newest first"
+    [rows]="store.rows()"
+    [columns]="columns"
+    [rowId]="rowId"
+  />
 </app-list-layout>

@@ -1,5 +1,9 @@
 <table class="table table-hover table-sm align-middle mb-0">
-  <caption class="visually-hidden">{{ caption() }}</caption>
+  <caption class="visually-hidden">
+    {{
+      caption()
+    }}
+  </caption>
   <thead>
     <tr>
       @for (column of columns(); track column.header) {
@@ -33,14 +37,24 @@
 </table>
 
 <ng-template #linked let-row let-column="column">
-  <a [routerLink]="column.link(row)" [class.font-monospace]="column.mono">
-    <ng-container [ngTemplateOutlet]="value" [ngTemplateOutletContext]="{ $implicit: row, column }" />
+  <a
+    [routerLink]="column.link(row)"
+    [queryParams]="column.linkQuery ? column.linkQuery(row) : null"
+    [class.font-monospace]="column.mono"
+  >
+    <ng-container
+      [ngTemplateOutlet]="value"
+      [ngTemplateOutletContext]="{ $implicit: row, column }"
+    />
   </a>
 </ng-template>
 
 <ng-template #plain let-row let-column="column">
   <span [class.font-monospace]="column.mono">
-    <ng-container [ngTemplateOutlet]="value" [ngTemplateOutletContext]="{ $implicit: row, column }" />
+    <ng-container
+      [ngTemplateOutlet]="value"
+      [ngTemplateOutletContext]="{ $implicit: row, column }"
+    />
   </span>
 </ng-template>
 

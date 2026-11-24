@@ -1,43 +1,73 @@
-<app-list-layout title="Orders" noun="orders" [result]="result">
+<app-list-layout
+  title="Orders"
+  noun="orders"
+  [result]="store.result()"
+  [loading]="store.loading()"
+  [error]="store.error()"
+  (pageChange)="store.list.setPage($event)"
+  (retry)="store.reload()"
+>
   <form slot="filters" class="row g-2 align-items-end" role="search" aria-label="Filter orders">
     <div class="col-12 col-md-6 col-xl-2">
       <label for="order-q" class="form-label small mb-1">Order number</label>
-      <input id="order-q" type="search" class="form-control form-control-sm" placeholder="AS-250314-004521" />
+      <input
+        id="order-q"
+        appFilter="q"
+        type="search"
+        class="form-control form-control-sm"
+        placeholder="AS-250314-004521"
+      />
     </div>
     <div class="col-6 col-md-3 col-xl-2">
       <label for="order-status" class="form-label small mb-1">Status</label>
-      <select id="order-status" class="form-select form-select-sm">
+      <select id="order-status" appFilter="status" class="form-select form-select-sm">
         <option value="">Any status</option>
-        @for (option of statusOptions; track option.value) {
+        @for (option of store.statusOptions(); track option.value) {
           <option [value]="option.value">{{ option.label }}</option>
         }
       </select>
     </div>
-    <div class="col-6 col-md-3 col-xl-2">
-      <label for="order-seller" class="form-label small mb-1">Seller</label>
-      <select id="order-seller" class="form-select form-select-sm">
-        <option value="">Any seller</option>
-        @for (seller of sellers; track seller.id) {
-          <option [value]="seller.id">{{ seller.name }}</option>
-        }
-      </select>
+    <div class="col-6 col-md-3 col-xl-1">
+      <label for="order-seller" class="form-label small mb-1">Seller ID</label>
+      <input
+        id="order-seller"
+        appFilter="sellerId"
+        type="number"
+        min="1"
+        class="form-control form-control-sm"
+        placeholder="171"
+      />
     </div>
-    <div class="col-12 col-md-6 col-xl-1">
+    <div class="col-6 col-md-3 col-xl-1">
       <label for="order-customer" class="form-label small mb-1">Customer ID</label>
-      <input id="order-customer" type="number" class="form-control form-control-sm" placeholder="1204" />
+      <input
+        id="order-customer"
+        appFilter="customerId"
+        type="number"
+        min="1"
+        class="form-control form-control-sm"
+        placeholder="1204"
+      />
     </div>
     <div class="col-6 col-md-3 col-xl-2">
       <label for="order-from" class="form-label small mb-1">From</label>
-      <input id="order-from" type="date" class="form-control form-control-sm" />
+      <input id="order-from" appFilter="from" type="date" class="form-control form-control-sm" />
     </div>
     <div class="col-6 col-md-3 col-xl-2">
       <label for="order-to" class="form-label small mb-1">To</label>
-      <input id="order-to" type="date" class="form-control form-control-sm" />
+      <input id="order-to" appFilter="to" type="date" class="form-control form-control-sm" />
     </div>
-    <div class="col-12 col-xl-1 d-flex">
-      <button type="reset" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+    <div class="col-12 col-xl-2 d-flex">
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary w-100"
+        [disabled]="!store.list.hasFilters()"
+        (click)="store.list.clear()"
+      >
+        Clear
+      </button>
     </div>
   </form>
 
-  <app-order-table [orders]="result.content" />
+  <app-order-table [orders]="store.rows()" />
 </app-list-layout>

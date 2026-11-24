@@ -1,21 +1,29 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
-import { SectionCard } from '../../../../shared/ui/section-card/section-card';
+import { PagedSection } from '../../../../shared/ui/paged-section/paged-section';
 import { FlagTable } from '../../../risk/components/flag-table/flag-table';
-import { flagsFor } from '../../../risk/mocks/flags.mock';
-import { MOCK_SELLER } from '../../mocks/seller-detail.mock';
+import { SellerFlagsStore } from '../../state/seller-detail.store';
 
 /** Seller flags tab (GET /api/flags?subjectType=SELLER&subjectId=). */
 @Component({
   selector: 'app-seller-flags',
-  imports: [SectionCard, FlagTable],
+  imports: [PagedSection, FlagTable],
+  providers: [SellerFlagsStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-section-card title="Account flags" [flush]="true">
-      <app-flag-table [flags]="flags" />
-    </app-section-card>
+    @let flags = store.flags;
+    <app-paged-section
+      title="Account flags"
+      [result]="flags.value()"
+      [loading]="flags.loading()"
+      [error]="flags.error()"
+      (pageChange)="flags.setPage($event)"
+      (retry)="flags.reload()"
+    >
+      <app-flag-table [flags]="flags.rows()" />
+    </app-paged-section>
   `,
 })
 export class SellerFlags {
-  protected readonly flags = flagsFor('SELLER', MOCK_SELLER.id);
+  protected readonly store = inject(SellerFlagsStore);
 }

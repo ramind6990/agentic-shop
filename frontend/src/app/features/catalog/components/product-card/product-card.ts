@@ -1,5 +1,5 @@
 import { DecimalPipe, NgOptimizedImage } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { Price } from '../../../../shared/ui/price/price';
@@ -20,13 +20,16 @@ import { ProductSummary } from '../../models/product.model';
           height="400"
           alt=""
           class="object-fit-cover"
-          [priority]="priority()"
+          [priority]="eager"
         />
       </div>
       <div class="card-body d-flex flex-column gap-1 p-3">
         <div class="small text-body-secondary">{{ product().brand.name }}</div>
         <h2 class="h6 card-title mb-1 title-clamp">
-          <a [routerLink]="['/products', product().id]" class="stretched-link text-body text-decoration-none">
+          <a
+            [routerLink]="['/products', product().id]"
+            class="stretched-link text-body text-decoration-none"
+          >
             {{ product().title }}
           </a>
         </h2>
@@ -45,14 +48,26 @@ import { ProductSummary } from '../../models/product.model';
           }
           <span class="text-body-secondary num">{{ product().salesCount | number }} sold</span>
         </div>
-        <div class="small text-body-secondary text-truncate">Sold by {{ product().seller.name }}</div>
+        <div class="small text-body-secondary text-truncate">
+          Sold by {{ product().seller.name }}
+        </div>
       </div>
     </article>
   `,
   styleUrl: './product-card.scss',
 })
-export class ProductCard {
+export class ProductCard implements OnInit {
   readonly product = input.required<ProductSummary>();
   /** Load the image eagerly (cards in the first visible row). */
   readonly priority = input(false);
+
+  /**
+   * `priority` read once: NgOptimizedImage rejects a change after init, and a card can move to another index when
+   * the result list is refreshed (rows are tracked by product id).
+   */
+  protected eager = false;
+
+  ngOnInit(): void {
+    this.eager = this.priority();
+  }
 }

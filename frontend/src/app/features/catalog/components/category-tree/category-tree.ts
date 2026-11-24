@@ -6,7 +6,7 @@ import { CategoryNode } from '../../models/category.model';
 
 /**
  * Category tree with native <details> disclosure (keyboard accessible, no script needed).
- * Leaves link to product search; the link will carry `categoryId` once search is wired.
+ * Leaves link to the product search filtered on that category.
  */
 @Component({
   selector: 'app-category-tree',

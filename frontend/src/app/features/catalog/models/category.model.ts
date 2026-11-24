@@ -9,6 +9,7 @@ export interface CategoryRef {
 
 /** Node of the 3-level tree from GET /api/categories (roots, groups, leaves). Products sit in leaves. */
 export interface CategoryNode extends CategoryRef {
+  /** 0 for roots, 1 for groups, 2 for leaves. */
   level: number;
   leaf: boolean;
   children: CategoryNode[];

@@ -1,11 +1,13 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
 import { AddressBlock } from '../../../../shared/ui/address-block/address-block';
 import { Breadcrumbs, Crumb } from '../../../../shared/ui/breadcrumbs/breadcrumbs';
 import { ColumnDef } from '../../../../shared/ui/data-table/column-def';
 import { DataTable } from '../../../../shared/ui/data-table/data-table';
+import { LoadState } from '../../../../shared/ui/load-state/load-state';
+import { NotFoundPanel } from '../../../../shared/ui/not-found-panel/not-found-panel';
 import { SectionCard } from '../../../../shared/ui/section-card/section-card';
 import { StatusBadge } from '../../../../shared/ui/status-badge/status-badge';
 import { ReturnCard } from '../../../returns/components/return-card/return-card';
@@ -13,8 +15,8 @@ import { Refund } from '../../../returns/models/return.model';
 import { OrderTotals } from '../../components/order-totals/order-totals';
 import { PaymentList } from '../../components/payment-list/payment-list';
 import { ShipmentList } from '../../components/shipment-list/shipment-list';
-import { MOCK_ORDER_DETAIL } from '../../mocks/order-detail.mock';
 import { OrderItem } from '../../models/order.model';
+import { OrderDetailStore } from '../../state/order-detail.store';
 
 /** Order detail: lines, returns and refunds on the left; totals, address, payments, shipments on the right. */
 @Component({
@@ -25,6 +27,8 @@ import { OrderItem } from '../../models/order.model';
     AddressBlock,
     Breadcrumbs,
     DataTable,
+    LoadState,
+    NotFoundPanel,
     SectionCard,
     StatusBadge,
     ReturnCard,
@@ -32,19 +36,19 @@ import { OrderItem } from '../../models/order.model';
     PaymentList,
     ShipmentList,
   ],
+  providers: [OrderDetailStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './order-detail.html',
 })
 export class OrderDetailPage {
-  /** Route parameter (id or order number); unused until the API is wired. */
-  readonly idOrNumber = input<string>();
+  protected readonly store = inject(OrderDetailStore);
 
-  protected readonly order = MOCK_ORDER_DETAIL;
-
-  protected readonly crumbs: Crumb[] = [
+  protected readonly crumbs = computed<Crumb[]>(() => [
     { label: 'Orders', link: '/orders' },
-    { label: this.order.orderNumber },
-  ];
+    { label: this.store.order()?.orderNumber ?? '' },
+  ]);
+
+  private readonly currency = () => this.store.order()?.currency ?? 'USD';
 
   protected readonly itemId = (item: OrderItem) => item.id;
   protected readonly itemColumns: ColumnDef<OrderItem>[] = [
@@ -54,9 +58,9 @@ export class OrderDetailPage {
       link: (i) => ['/products', i.productId],
       hint: (i) => i.sku,
     },
-    { header: 'Unit price', value: (i) => i.unitPrice, type: 'money', currency: () => this.order.currency },
+    { header: 'Unit price', value: (i) => i.unitPrice, type: 'money', currency: this.currency },
     { header: 'Qty', value: (i) => i.quantity, type: 'number' },
-    { header: 'Line total', value: (i) => i.lineTotal, type: 'money', currency: () => this.order.currency },
+    { header: 'Line total', value: (i) => i.lineTotal, type: 'money', currency: this.currency },
   ];
 
   protected readonly refundId = (refund: Refund) => refund.id;
@@ -69,6 +73,6 @@ export class OrderDetailPage {
     },
     { header: 'Issued by', value: (r) => r.issuedBy?.name ?? null },
     { header: 'Status', value: (r) => r.status, type: 'status' },
-    { header: 'Amount', value: (r) => r.amount, type: 'money', currency: () => this.order.currency },
+    { header: 'Amount', value: (r) => r.amount, type: 'money', currency: this.currency },
   ];
 }

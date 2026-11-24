@@ -1,31 +1,29 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
-import { Pager } from '../../../../shared/ui/pager/pager';
-import { SectionCard } from '../../../../shared/ui/section-card/section-card';
+import { PagedSection } from '../../../../shared/ui/paged-section/paged-section';
 import { OrderTable } from '../../../orders/components/order-table/order-table';
-import { MOCK_ORDER_PAGE } from '../../../orders/mocks/order-list.mock';
-import { MOCK_SELLER } from '../../mocks/seller-detail.mock';
+import { SellerOrdersStore } from '../../state/seller-detail.store';
 
-/** Seller orders tab (GET /api/orders?sellerId=). */
+/** Seller orders tab (GET /api/orders?sellerId=); the page is kept in the URL. */
 @Component({
   selector: 'app-seller-orders',
-  imports: [Pager, SectionCard, OrderTable],
+  imports: [PagedSection, OrderTable],
+  providers: [SellerOrdersStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <app-section-card title="Orders" [flush]="true">
-      <app-order-table [orders]="orders" [hide]="['seller']" />
-      <app-pager
-        class="d-block border-top px-3 py-2"
-        [page]="0"
-        [size]="25"
-        [totalElements]="total"
-        [totalPages]="totalPages"
-      />
-    </app-section-card>
+    @let orders = store.orders;
+    <app-paged-section
+      title="Orders"
+      [result]="orders.value()"
+      [loading]="orders.loading()"
+      [error]="orders.error()"
+      (pageChange)="orders.setPage($event)"
+      (retry)="orders.reload()"
+    >
+      <app-order-table [orders]="orders.rows()" [hide]="['seller']" />
+    </app-paged-section>
   `,
 })
 export class SellerOrders {
-  protected readonly orders = MOCK_ORDER_PAGE.content.filter((o) => o.seller.id === MOCK_SELLER.id);
-  protected readonly total = MOCK_SELLER.stats.orderCount;
-  protected readonly totalPages = Math.ceil(this.total / 25);
+  protected readonly store = inject(SellerOrdersStore);
 }

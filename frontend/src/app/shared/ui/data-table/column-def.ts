@@ -1,3 +1,5 @@
+import { Params } from '@angular/router';
+
 /** How a cell value is rendered. */
 export type CellType = 'text' | 'number' | 'money' | 'date' | 'datetime' | 'status' | 'role';
 
@@ -9,6 +11,8 @@ export interface ColumnDef<T> {
   type?: CellType;
   /** Wrap the value in a router link. */
   link?: (row: T) => string | (string | number)[];
+  /** Query parameters for the link, e.g. `{ brandIds: 3 }`. */
+  linkQuery?: (row: T) => Params;
   /** Currency code for `money` cells (default USD). */
   currency?: (row: T) => string;
   /** Monospace text, for codes such as order numbers and SKUs. */

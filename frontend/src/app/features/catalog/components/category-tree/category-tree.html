@@ -3,15 +3,22 @@
     @for (node of nodes; track node.id) {
       <li>
         @if (node.leaf) {
-          <a class="leaf" routerLink="/products">{{ node.name }}</a>
+          <a class="leaf" routerLink="/products" [queryParams]="{ categoryId: node.id }">{{
+            node.name
+          }}</a>
           <span class="meta">#{{ node.id }}</span>
         } @else {
-          <details [open]="node.level === 1">
+          <details [open]="node.level === 0">
             <summary>
               <span class="fw-semibold">{{ node.name }}</span>
-              <span class="meta">{{ node.children.length }} {{ node.level === 1 ? 'groups' : 'categories' }}</span>
+              <span class="meta"
+                >{{ node.children.length }} {{ node.level === 0 ? 'groups' : 'categories' }}</span
+              >
             </summary>
-            <ng-container [ngTemplateOutlet]="branch" [ngTemplateOutletContext]="{ $implicit: node.children }" />
+            <ng-container
+              [ngTemplateOutlet]="branch"
+              [ngTemplateOutletContext]="{ $implicit: node.children }"
+            />
           </details>
         }
       </li>

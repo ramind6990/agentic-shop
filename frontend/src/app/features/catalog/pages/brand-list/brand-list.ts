@@ -1,48 +1,78 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
+import { provideListState } from '../../../../shared/data/list-query';
 import { Ref } from '../../../../shared/models/api.model';
 import { ColumnDef } from '../../../../shared/ui/data-table/column-def';
 import { DataTable } from '../../../../shared/ui/data-table/data-table';
+import { FilterControl } from '../../../../shared/ui/filter-control/filter-control';
 import { ListLayout } from '../../../../shared/ui/list-layout/list-layout';
-import { MOCK_BRAND_PAGE, MOCK_CATEGORY_TREE } from '../../mocks/catalog-reference.mock';
+import { BrandListStore } from '../../state/brand-list.store';
+import { CategoryTreeStore } from '../../state/category-tree.store';
 
-/** Brands (GET /api/brands): search by name, or only brands with products in a category. Mock data for now. */
+/** Brands (GET /api/brands): search by name, or only brands with products in a category. */
 @Component({
   selector: 'app-brand-list',
-  imports: [DataTable, ListLayout],
+  imports: [DataTable, FilterControl, ListLayout],
+  providers: [BrandListStore, provideListState(BrandListStore)],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'd-block h-100' },
   template: `
-    <app-list-layout title="Brands" noun="brands" [result]="result">
+    <app-list-layout
+      title="Brands"
+      noun="brands"
+      [result]="store.result()"
+      [loading]="store.loading()"
+      [error]="store.error()"
+      (pageChange)="store.list.setPage($event)"
+      (retry)="store.reload()"
+    >
       <form slot="filters" class="row g-2 align-items-end" role="search" aria-label="Filter brands">
         <div class="col-12 col-md-6 col-xl-4">
           <label for="br-q" class="form-label small mb-1">Name</label>
-          <input id="br-q" type="search" class="form-control form-control-sm" placeholder="Novatek" />
+          <input
+            id="br-q"
+            appFilter="q"
+            type="search"
+            class="form-control form-control-sm"
+            placeholder="Novatek"
+          />
         </div>
         <div class="col-8 col-md-4 col-xl-3">
           <label for="br-category" class="form-label small mb-1">Has products in</label>
-          <select id="br-category" class="form-select form-select-sm">
+          <select id="br-category" appFilter="categoryId" class="form-select form-select-sm">
             <option value="">Any category</option>
-            @for (c of categories; track c.id) {
-              <option [value]="c.id">{{ c.name }}</option>
+            @for (c of categories.options(); track c.id) {
+              <option [value]="c.id">{{ c.label }}</option>
             }
           </select>
         </div>
         <div class="col-4 col-md-2 col-xl-1">
-          <button type="reset" class="btn btn-sm btn-outline-secondary w-100">Clear</button>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary w-100"
+            (click)="store.list.clear()"
+          >
+            Clear
+          </button>
         </div>
       </form>
 
-      <app-data-table caption="Brands" [rows]="result.content" [columns]="columns" [rowId]="rowId" />
+      <app-data-table caption="Brands" [rows]="store.rows()" [columns]="columns" [rowId]="rowId" />
     </app-list-layout>
   `,
 })
 export class BrandList {
-  protected readonly result = MOCK_BRAND_PAGE;
-  protected readonly categories = MOCK_CATEGORY_TREE;
+  protected readonly store = inject(BrandListStore);
+  protected readonly categories = inject(CategoryTreeStore);
 
   protected readonly rowId = (b: Ref) => b.id;
   protected readonly columns: ColumnDef<Ref>[] = [
-    { header: 'Brand', value: (b) => b.name, link: () => ['/products'], hint: (b) => `#${b.id}` },
+    {
+      header: 'Brand',
+      value: (b) => b.name,
+      link: () => ['/products'],
+      linkQuery: (b) => ({ brandIds: b.id }),
+      hint: (b) => `#${b.id}`,
+    },
   ];
 }

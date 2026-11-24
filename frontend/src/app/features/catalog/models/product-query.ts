@@ -29,6 +29,8 @@ export interface NumberRange {
 export interface ProductQuery {
   q: string;
   categoryId: number | null;
+  /** Limits the search to one seller (the seller's products tab). */
+  sellerId: number | null;
   brandIds: number[];
   minPrice: number | null;
   maxPrice: number | null;
@@ -70,6 +72,7 @@ export function parseProductQuery(params: ParamMap): ProductQuery {
   return {
     q: params.get('q')?.trim() ?? '',
     categoryId: intParam(params, 'categoryId'),
+    sellerId: intParam(params, 'sellerId'),
     brandIds: listParam(params, 'brandIds')
       .map(Number)
       .filter((id) => Number.isInteger(id)),
@@ -84,11 +87,30 @@ export function parseProductQuery(params: ParamMap): ProductQuery {
   };
 }
 
+/** A search with no filters: page 0, default sort. */
+export function emptyProductQuery(): ProductQuery {
+  return {
+    q: '',
+    categoryId: null,
+    sellerId: null,
+    brandIds: [],
+    minPrice: null,
+    maxPrice: null,
+    minRating: null,
+    inStock: false,
+    attrs: {},
+    ranges: {},
+    sort: 'relevance',
+    page: 0,
+  };
+}
+
 /** Filter parameters shared by /api/products and /api/products/facets (no sort or paging). */
 export function productFilterParams(query: ProductQuery): Record<string, ParamValue> {
   const params: Record<string, ParamValue> = {
     q: query.q,
     categoryId: query.categoryId,
+    sellerId: query.sellerId,
     brandIds: query.brandIds,
     minPrice: query.minPrice,
     maxPrice: query.maxPrice,

@@ -10,8 +10,7 @@ export const RETURN_ROUTES: Routes = [
   {
     path: ':id',
     title: 'Return · AgenticShop',
-    data: { title: 'Return detail' },
-    loadComponent: () => import('../../shared/ui/not-built/not-built').then((m) => m.NotBuilt),
+    loadComponent: () => import('./pages/return-detail/return-detail').then((m) => m.ReturnDetail),
   },
 ];
 

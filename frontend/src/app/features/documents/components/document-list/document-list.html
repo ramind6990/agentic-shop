@@ -1,12 +1,23 @@
 <div class="panel">
-  <form class="d-flex flex-column gap-2 p-3 border-bottom" role="search" aria-label="Filter documents">
+  <form
+    class="d-flex flex-column gap-2 p-3 border-bottom"
+    role="search"
+    aria-label="Filter documents"
+    (submit)="$event.preventDefault()"
+  >
     <div>
       <label for="doc-q" class="visually-hidden">Search document titles</label>
-      <input id="doc-q" type="search" class="form-control form-control-sm" placeholder="Search titles" />
+      <input
+        id="doc-q"
+        appFilter="q"
+        type="search"
+        class="form-control form-control-sm"
+        placeholder="Search titles"
+      />
     </div>
     <div>
       <label for="doc-type" class="visually-hidden">Document type</label>
-      <select id="doc-type" class="form-select form-select-sm">
+      <select id="doc-type" appFilter="type" class="form-select form-select-sm">
         <option value="">All types</option>
         @for (option of typeOptions; track option.value) {
           <option [value]="option.value">{{ option.label }}</option>
@@ -15,24 +26,51 @@
     </div>
   </form>
 
-  <nav class="py-2" aria-label="Documents">
-    @for (group of groups(); track group.type) {
-      <div class="section-label px-3 pt-2 pb-1" [id]="'doc-group-' + group.type">{{ group.label }}</div>
-      <ul class="list-unstyled mb-2" [attr.aria-labelledby]="'doc-group-' + group.type">
-        @for (doc of group.documents; track doc.code) {
-          <li>
-            <a
-              class="doc-link"
-              [routerLink]="['/documents', doc.code]"
-              routerLinkActive="active"
-              ariaCurrentWhenActive="page"
-            >
-              <span class="d-block text-truncate">{{ doc.title }}</span>
-              <span class="d-block small text-body-secondary font-monospace text-truncate">{{ doc.code }}</span>
-            </a>
-          </li>
-        }
-      </ul>
+  <app-load-state
+    [loading]="store.loading()"
+    [error]="store.error()"
+    [hasValue]="!!store.result()"
+    (retry)="store.reload()"
+  >
+    <nav class="py-2" aria-label="Documents">
+      @for (group of store.groups(); track group.type) {
+        <div class="section-label px-3 pt-2 pb-1" [id]="'doc-group-' + group.type">
+          {{ group.label }}
+        </div>
+        <ul class="list-unstyled mb-2" [attr.aria-labelledby]="'doc-group-' + group.type">
+          @for (doc of group.documents; track doc.code) {
+            <li>
+              <a
+                class="doc-link"
+                [routerLink]="['/documents', doc.code]"
+                [queryParams]="openParams"
+                queryParamsHandling="merge"
+                routerLinkActive="active"
+                ariaCurrentWhenActive="page"
+              >
+                <span class="d-block text-truncate">{{ doc.title }}</span>
+                <span class="d-block small text-body-secondary font-monospace text-truncate">{{
+                  doc.code
+                }}</span>
+              </a>
+            </li>
+          }
+        </ul>
+      } @empty {
+        <p class="small text-body-secondary px-3 mb-0">No documents match.</p>
+      }
+    </nav>
+    @if (store.result(); as page) {
+      @if (page.totalPages > 1) {
+        <app-pager
+          class="d-block border-top px-3 py-2"
+          [page]="page.page"
+          [size]="page.size"
+          [totalElements]="page.totalElements"
+          [totalPages]="page.totalPages"
+          (pageChange)="store.list.setPage($event)"
+        />
+      }
     }
-  </nav>
+  </app-load-state>
 </div>
