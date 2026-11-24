@@ -7,6 +7,8 @@ import com.rmrx.agenticshop.ai.contract.tool.RefundView;
 import com.rmrx.agenticshop.ai.contract.tool.ReturnView;
 import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
 import com.rmrx.agenticshop.ai.contract.tool.TicketMessageView;
+import com.rmrx.agenticshop.support.entity.SupportTier;
+import com.rmrx.agenticshop.support.entity.TicketStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -52,6 +54,32 @@ public final class ToolData {
             return new ConfirmationRequestBlock(id, block.title(), block.description(), block.target(),
                     block.amount(), block.currency(), block.policyReason(), block.expiresAt(), block.actions());
         }
+    }
+
+    /**
+     * The agent asked the user to pick one of several orders instead of guessing. Built by code from this turn's
+     * registered order results (never from model text); the reply shows it as a CHOICE_REQUEST whose options carry
+     * SELECT_OPTION buttons. {@code then} is what a click continues with for the chosen order.
+     */
+    public record ChoicePending(String status, ActionType then, String prompt, List<ChoiceOption> options) {
+
+        public static final String AWAITING = "AWAITING_USER_CHOICE";
+
+        public ChoicePending {
+            options = options == null ? List.of() : List.copyOf(options);
+        }
+    }
+
+    /** One option of a {@link ChoicePending}: an order the caller may see, labelled from its looked-up data. */
+    public record ChoiceOption(Long orderId, String label, String description) {
+    }
+
+    /**
+     * The conversation was handed to a human: the ticket's state after the escalation. alreadyEscalated is true when
+     * it was escalated before (nothing changed this time).
+     */
+    public record Escalated(Long ticketId, String ticketNumber, SupportTier tier, TicketStatus status, String reason,
+                            String expectedResponse, boolean alreadyEscalated) {
     }
 
     /** The latest messages of the bound ticket, oldest first. */

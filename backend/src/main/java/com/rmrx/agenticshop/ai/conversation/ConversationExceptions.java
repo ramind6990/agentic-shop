@@ -13,6 +13,18 @@ public final class ConversationExceptions {
         }
     }
 
+    /**
+     * 409 with code TICKET_ESCALATED: the ticket was handed to a human, so a customer's chat button no longer starts
+     * an AI turn (nothing was used).
+     */
+    public static class TicketEscalated extends Conflict {
+        public static final String CODE = "TICKET_ESCALATED";
+
+        public TicketEscalated() {
+            super("This conversation was handed to a support agent; the assistant no longer acts on it.");
+        }
+    }
+
     /** 503: the AI layer is switched off (no models configured). */
     public static class AiUnavailable extends RuntimeException {
         public AiUnavailable(String message) {

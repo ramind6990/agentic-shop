@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai.tools;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.rmrx.agenticshop.ai.action.WriteGateway;
 import com.rmrx.agenticshop.ai.context.AgentContext;
+import com.rmrx.agenticshop.ai.escalation.EscalationService;
 import com.rmrx.agenticshop.ai.tools.port.CatalogPort;
 import com.rmrx.agenticshop.ai.tools.port.OrderPort;
 import com.rmrx.agenticshop.ai.tools.port.RefundPort;
@@ -32,6 +33,8 @@ import static com.rmrx.agenticshop.ai.tools.OrderTools.GET_MY_ORDERS;
 import static com.rmrx.agenticshop.ai.tools.OrderTools.GET_ORDER;
 import static com.rmrx.agenticshop.ai.tools.OrderTools.TRACK_SHIPMENT;
 import static com.rmrx.agenticshop.ai.tools.ReturnTools.GET_RETURN_STATUS;
+import static com.rmrx.agenticshop.ai.tools.OrderTools.ASK_USER_TO_CHOOSE_ORDER;
+import static com.rmrx.agenticshop.ai.tools.SupportTools.ESCALATE_TO_HUMAN;
 import static com.rmrx.agenticshop.ai.tools.SupportTools.GET_TICKET_HISTORY;
 import static com.rmrx.agenticshop.ai.tools.WriteTools.REQUEST_ORDER_CANCELLATION;
 import static com.rmrx.agenticshop.ai.tools.WriteTools.REQUEST_REFUND;
@@ -47,12 +50,13 @@ public class ToolCatalog {
 
     private static final Set<String> STAFF = Set.of(FIND_CUSTOMER_ORDERS, GET_ORDER, TRACK_SHIPMENT,
             SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION,
-            REQUEST_RETURN, REQUEST_REFUND);
+            REQUEST_RETURN, REQUEST_REFUND, ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN);
 
     /** Which tools each role may use. */
     static final Map<Role, Set<String>> ALLOWED = new EnumMap<>(Map.of(
             Role.CUSTOMER, Set.of(GET_MY_ORDERS, GET_ORDER, TRACK_SHIPMENT, SEARCH_PRODUCTS, GET_PRODUCT,
-                    GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION, REQUEST_RETURN),
+                    GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION, REQUEST_RETURN,
+                    ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN),
             Role.SELLER, Set.of(GET_ORDER, SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS),
             Role.SUPPORT_T1, STAFF,
             Role.SUPPORT_T2, STAFF,
@@ -67,11 +71,14 @@ public class ToolCatalog {
     private final RefundPort refunds;
     private final SupportPort support;
     private final WriteGateway writes;
+    private final EscalationService escalations;
     /** Tool results leave out null fields to stay compact for the model. */
     private final JsonMapper json;
 
     public ToolCatalog(OrderPort orders, ShipmentPort shipments, CatalogPort catalog, ReturnPort returns,
-                       RefundPort refunds, SupportPort support, WriteGateway writes, JsonMapper json) {
+                       RefundPort refunds, SupportPort support, WriteGateway writes, EscalationService escalations,
+                       JsonMapper json) {
+        this.escalations = escalations;
         this.orders = orders;
         this.shipments = shipments;
         this.catalog = catalog;
@@ -95,7 +102,7 @@ public class ToolCatalog {
                 new OrderTools(ctx, registry, json, orders, shipments),
                 new CatalogTools(ctx, registry, json, catalog),
                 new ReturnTools(ctx, registry, json, returns, refunds),
-                new SupportTools(ctx, registry, json, support),
+                new SupportTools(ctx, registry, json, support, escalations),
                 new WriteTools(ctx, registry, json, writes));
 
         Map<String, BoundTools.Bound> bound = new LinkedHashMap<>();

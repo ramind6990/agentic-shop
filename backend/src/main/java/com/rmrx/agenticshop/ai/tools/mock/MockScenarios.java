@@ -40,7 +40,12 @@ public final class MockScenarios {
     public static final String PARTIAL_SHIPMENT = "partial-shipment";
     public static final String ALREADY_REFUNDED = "already-refunded";
     public static final String INELIGIBLE = "ineligible";
-    public static final Set<String> ALL = Set.of(HAPPY, EMPTY, PARTIAL_SHIPMENT, ALREADY_REFUNDED, INELIGIBLE);
+    /** happy plus two cancellable orders of the same headphones (50007 PAID, 50008 PENDING): clarification tests. */
+    public static final String AMBIGUOUS = "ambiguous";
+    /** happy data, but every port call fails with UNAVAILABLE: repeated-failure (auto-escalation) tests. */
+    public static final String OUTAGE = "outage";
+    public static final Set<String> ALL = Set.of(HAPPY, EMPTY, PARTIAL_SHIPMENT, ALREADY_REFUNDED, INELIGIBLE,
+            AMBIGUOUS, OUTAGE);
 
     /** Owner of the orders when the caller is not a customer (staff look it up with find_customer_orders). */
     public static final long PRIMARY_CUSTOMER_ID = 7001;
@@ -88,6 +93,11 @@ public final class MockScenarios {
             case PARTIAL_SHIPMENT -> b.happy(5, true, false);
             case ALREADY_REFUNDED -> b.happy(5, false, true);
             case INELIGIBLE -> b.happy(45, false, false);
+            case AMBIGUOUS -> {
+                b.happy(5, false, false);
+                b.ambiguousHeadphones();
+            }
+            case OUTAGE -> b.happy(5, false, false);
             default -> throw new IllegalStateException(scenario);
         }
         return b.world;
@@ -280,6 +290,14 @@ public final class MockScenarios {
             delivered(foreign, Carrier.DHL, "JD014600003456789012", 9);
 
             ticket(true);
+        }
+
+        /** Two cancellable orders of the same Auralis headphones, so "cancel my headphones order" is ambiguous. */
+        void ambiguousHeadphones() {
+            order(50007, customerId, OrderStatus.PAID, daysAgo(1), line(7101, 1));
+            MockWorld.Order pending = order(50008, customerId, OrderStatus.PENDING, ago(Duration.ofHours(2)),
+                    line(7101, 1), line(7116, 2));
+            pending.paidAmount = BigDecimal.ZERO;
         }
 
         record Line(long productId, int qty) {

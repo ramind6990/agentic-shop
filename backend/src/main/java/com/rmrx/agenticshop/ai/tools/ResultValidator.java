@@ -93,6 +93,14 @@ final class ResultValidator {
                 check(r.refunds());
             }
             case ToolData.TicketHistory h -> check(h.messages());
+            case ToolData.ChoicePending c -> {
+                if (c.options().size() < 2) throw new MalformedResultException("choice needs 2+ options");
+                c.options().forEach(o -> require(o.orderId(), "option.orderId"));
+            }
+            case ToolData.Escalated e -> {
+                require(e.ticketId(), "escalation.ticketId");
+                require(e.tier(), "escalation.tier");
+            }
             default -> {
             }
         }

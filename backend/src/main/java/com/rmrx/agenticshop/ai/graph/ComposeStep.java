@@ -43,7 +43,7 @@ import java.util.stream.Collectors;
  * dropped, at most {@link #MAX_SUGGESTIONS} suggestions are kept. Any failure (model error, bad JSON, little time left) falls back
  * to {@code deterministic}: every result of the turn except superseded duplicates, ANSWERED, no suggestions. In both
  * modes a write proposed this turn (a {@link ToolData.ConfirmationPending}) forces NEEDS_CONFIRMATION and is always
- * shown.
+ * shown; see {@link #enforce} for all rules (escalation, confirmation, clarification, refusal).
  */
 @Slf4j
 @Component
@@ -173,17 +173,45 @@ public class ComposeStep {
 
     // ------------------------------------------------------------------ rules shared by both modes
 
-    /** A write proposed this turn forces NEEDS_CONFIRMATION, and its card is always shown. */
+    /**
+     * Rules over the model's frame, in priority order:
+     * <ol>
+     * <li>The conversation was escalated this turn: ESCALATED, only the escalation card, no quick replies.</li>
+     * <li>A write was proposed this turn: NEEDS_CONFIRMATION, and its (latest) card is always shown.</li>
+     * <li>The user was asked to choose (ask_user_to_choose_order): NEEDS_INFO, and the choice card is shown.</li>
+     * <li>REFUSED shows no cards (whatever the model listed); the reply keeps only the reply-level TALK_TO_HUMAN.</li>
+     * </ol>
+     */
     static Decision enforce(Decision d, TurnResultRegistry registry) {
-        List<String> pending = registry.all().stream()
-                .filter(e -> e.data() instanceof ToolData.ConfirmationPending)
+        List<String> latest = latestDistinct(registry);
+        List<String> escalations = ids(registry, ToolData.Escalated.class);
+        if (!escalations.isEmpty()) {
+            return new Decision(ResponseStatus.ESCALATED, List.of(escalations.getLast()), List.of(), d.mode());
+        }
+        List<String> pending = ids(registry, ToolData.ConfirmationPending.class);
+        if (!pending.isEmpty()) {
+            // only the latest proposal per operation and target is still OPEN; earlier ones were superseded
+            List<String> latestPending = latest.stream().filter(pending::contains).toList();
+            LinkedHashSet<String> show = new LinkedHashSet<>(d.show());
+            show.addAll(latestPending);
+            return new Decision(ResponseStatus.NEEDS_CONFIRMATION, List.copyOf(show), d.suggestedReplies(), d.mode());
+        }
+        List<String> choices = ids(registry, ToolData.ChoicePending.class);
+        if (!choices.isEmpty()) {
+            LinkedHashSet<String> show = new LinkedHashSet<>(d.show());
+            show.removeAll(choices);
+            show.add(choices.getLast());
+            return new Decision(ResponseStatus.NEEDS_INFO, List.copyOf(show), d.suggestedReplies(), d.mode());
+        }
+        if (d.status() == ResponseStatus.REFUSED && !d.show().isEmpty()) {
+            return new Decision(ResponseStatus.REFUSED, List.of(), d.suggestedReplies(), d.mode());
+        }
+        return d;
+    }
+
+    private static List<String> ids(TurnResultRegistry registry, Class<?> type) {
+        return registry.all().stream().filter(e -> type.isInstance(e.data()))
                 .map(TurnResultRegistry.Entry::resultId).toList();
-        if (pending.isEmpty()) return d;
-        // only the latest proposal per operation and target is still OPEN; earlier ones were superseded
-        List<String> latestPending = latestDistinct(registry).stream().filter(pending::contains).toList();
-        LinkedHashSet<String> show = new LinkedHashSet<>(d.show());
-        show.addAll(latestPending);
-        return new Decision(ResponseStatus.NEEDS_CONFIRMATION, List.copyOf(show), d.suggestedReplies(), d.mode());
     }
 
     /**

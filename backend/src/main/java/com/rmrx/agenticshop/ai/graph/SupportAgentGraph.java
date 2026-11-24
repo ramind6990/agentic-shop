@@ -7,7 +7,10 @@ import com.rmrx.agenticshop.ai.contract.block.Block;
 import com.rmrx.agenticshop.ai.contract.response.AgentResponse;
 import com.rmrx.agenticshop.ai.contract.response.ResponseStatus;
 import com.rmrx.agenticshop.ai.events.AgentEventPublisher;
+import com.rmrx.agenticshop.ai.escalation.EscalationService;
 import com.rmrx.agenticshop.ai.tools.BoundTools;
+import com.rmrx.agenticshop.ai.tools.SupportTools;
+import com.rmrx.agenticshop.ai.tools.ToolData;
 import com.rmrx.agenticshop.ai.tools.TurnResultRegistry;
 import com.rmrx.agenticshop.ai.trace.TraceRecorder;
 import com.rmrx.agenticshop.ai.trace.entity.AiRunStatus;
@@ -53,10 +56,21 @@ import static org.bsc.langgraph4j.action.AsyncNodeActionWithConfig.node_async;
  * The support agent as a LangGraph4j graph: a ReAct loop over the caller's tools, then compose and persist.
  *
  * <pre>
- * START → loadContext → agent ─┬─(tool calls, step &lt; budget)→ tools → agent
- *                              ├─(tool calls, budget used up)→ compose (status ERROR)
+ * START → loadContext → agent ─┬─(tool calls, step &lt; budget)→ tools ─┬→ agent
+ *                              │                                      └─(auto-escalated)→ compose
+ *                              ├─(tool calls, budget used up)→ compose (customer: auto-escalate; staff: ERROR)
  *                              └─(final text)────────────────→ compose → persist → END
  * </pre>
+ *
+ * Escalation (handing the conversation to a person, see {@link EscalationService}) happens three ways: the model
+ * calls {@code escalate_to_human}; a TALK_TO_HUMAN click escalates in loadContext; or code escalates a customer turn
+ * that hit {@link #AUTO_ESCALATE_FAILURES} UNAVAILABLE/TIMEOUT tool failures or used up its step budget. A code-made
+ * escalation is registered like a tool result (so the ESCALATION card comes from it) and traced as an
+ * {@code escalation:<trigger>} step. Staff (internal) turns are never auto-escalated: the staff member is the human.
+ *
+ * A turn started by a chat button enters with an {@link ActionEvent} in the state: loadContext then makes the
+ * event's deterministic tool calls in code ({@link ActionFollowUp}) and gives the model the event as a system note
+ * instead of a user message; compose always shows the event's results (built from the registry, never model text).
  *
  * The graph is compiled once; per-turn objects travel in the run config as a {@link TurnRuntime}. Every node
  * re-binds the turn's RunScope, so model calls are billed to the run whatever thread LangGraph4j runs a node on.
@@ -77,6 +91,13 @@ public class SupportAgentGraph {
     public static final String BUDGET_ERROR = "STEP_BUDGET_EXHAUSTED";
     private static final String EMPTY_TEXT = "Here is what I found.";
     private static final int ARGS_SUMMARY = 300;
+    /** Transient tool failures (UNAVAILABLE/TIMEOUT) in one customer turn that hand it to a person. */
+    public static final int AUTO_ESCALATE_FAILURES = 2;
+    public static final String FAILURE_ESCALATION_TEXT = "Sorry, I'm having trouble reaching our systems right now, "
+            + "so I've handed your request to a support agent. They will follow up in this conversation.";
+    public static final String BUDGET_ESCALATION_TEXT = "Sorry, I couldn't finish this request on my own, so I've "
+            + "handed it to a support agent. They will follow up in this conversation.";
+    private static final String ESCALATION_LABEL = "Handing over to a support agent\u2026";
 
     private final ObjectProvider<StreamingChatModel> streamingModel;
     private final HistoryLoader history;
@@ -84,6 +105,7 @@ public class SupportAgentGraph {
     private final BlockFactory blocks;
     private final ActionService actions;
     private final ReplyWriter replies;
+    private final EscalationService escalations;
     private final TraceRecorder trace;
     private final AiProperties props;
     private final JsonMapper json;
@@ -91,7 +113,9 @@ public class SupportAgentGraph {
 
     public SupportAgentGraph(ObjectProvider<StreamingChatModel> streamingModel, HistoryLoader history,
                              ComposeStep compose, BlockFactory blocks, ActionService actions, ReplyWriter replies,
-                             TraceRecorder trace, AiProperties props, JsonMapper json) throws GraphStateException {
+                             EscalationService escalations, TraceRecorder trace, AiProperties props, JsonMapper json)
+            throws GraphStateException {
+        this.escalations = escalations;
         this.streamingModel = streamingModel;
         this.history = history;
         this.compose = compose;
@@ -115,7 +139,8 @@ public class SupportAgentGraph {
                 .addEdge(LOAD_CONTEXT, AGENT)
                 .addConditionalEdges(AGENT, edge_async(SupportAgentGraph::route),
                         Map.of(TOOLS, TOOLS, COMPOSE, COMPOSE))
-                .addEdge(TOOLS, AGENT)
+                .addConditionalEdges(TOOLS, edge_async(SupportAgentGraph::afterTools),
+                        Map.of(AGENT, AGENT, COMPOSE, COMPOSE))
                 .addEdge(COMPOSE, PERSIST)
                 .addEdge(PERSIST, END);
         // loadContext + up to budget agent steps + (budget-1) tool steps + compose + persist, with headroom
@@ -129,7 +154,9 @@ public class SupportAgentGraph {
                 .threadId(rt.runId().toString())
                 .putMetadata(AgentState.RUNTIME, rt)
                 .build();
-        graph.invoke(Map.of(), config);
+        Map<String, Object> input = rt.actionEvent() == null ? Map.of()
+                : Map.of(AgentState.ACTION_EVENT, rt.actionEvent());
+        graph.invoke(input, config);
         if (!rt.finished()) throw new IllegalStateException("graph ended without a persisted reply");
     }
 
@@ -151,7 +178,41 @@ public class SupportAgentGraph {
     // ------------------------------------------------------------------ nodes
 
     private Map<String, Object> loadContext(AgentState state, TurnRuntime rt) {
-        return Map.of(AgentState.MESSAGES, history.initialMessages(rt), AgentState.STEP_COUNT, 0);
+        ActionEvent event = state.actionEvent().orElse(null);
+        if (event == null) {
+            return Map.of(AgentState.MESSAGES, history.initialMessages(rt), AgentState.STEP_COUNT, 0);
+        }
+        // a chat button: code makes the deterministic calls (fresh read, prepare of a write button) before the model
+        // runs; the model then only narrates (see ActionFollowUp)
+        List<String> resultIds = new ArrayList<>(event.resultIds());
+        List<String> lines = new ArrayList<>();
+        for (String id : event.resultIds()) {
+            rt.registry().get(id).ifPresent(e -> lines.add(Summaries.ofEntry(e)));
+        }
+        if (ActionFollowUp.escalates(event)) {
+            String id = escalateInCode(rt, "The customer clicked \"Talk to a person\".",
+                    EscalationService.Trigger.USER_BUTTON);
+            if (id != null) {
+                resultIds.add(id);
+                rt.registry().get(id).ifPresent(e -> lines.add(Summaries.ofEntry(e)));
+            } else {
+                lines.add("the hand-off to a person failed; apologise and suggest trying again");
+            }
+        }
+        for (ActionFollowUp.Call call : ActionFollowUp.calls(event, json)) {
+            ToolCall done = runTool(rt, ToolExecutionRequest.builder().id("action-" + event.actionId())
+                    .name(call.tool()).arguments(call.args()).build());
+            if (done.outcome().ok()) {
+                resultIds.add(done.resultId());
+                lines.add(done.outcome().summary());
+            } else {
+                lines.add(call.tool() + " failed: " + done.outcome().summary());
+            }
+        }
+        ActionEvent updated = event.withResultIds(resultIds);
+        List<ChatMessage> messages = history.actionMessages(rt, updated.historyLine(),
+                ActionFollowUp.note(updated, lines, json));
+        return Map.of(AgentState.MESSAGES, messages, AgentState.STEP_COUNT, 0, AgentState.ACTION_EVENT, updated);
     }
 
     /** One streaming model call with the tools; text chunks go out as TOKEN_DELTA events. */
@@ -209,28 +270,95 @@ public class SupportAgentGraph {
         return toolCalls && !state.budgetExhausted() ? TOOLS : COMPOSE;
     }
 
-    /** Executes the requested tool calls in order; results go back to the model as tool messages. */
+    static String afterTools(AgentState state) {
+        return state.autoEscalated().isPresent() ? COMPOSE : AGENT;
+    }
+
+    /**
+     * Executes the requested tool calls in order; results go back to the model as tool messages. A customer turn
+     * with {@link #AUTO_ESCALATE_FAILURES} transient failures is escalated in code and goes straight to compose.
+     */
     private Map<String, Object> tools(AgentState state, TurnRuntime rt) {
         AiMessage ai = state.lastAiMessage().orElseThrow();
-        BoundTools tools = rt.tools();
-        AgentEventPublisher publisher = rt.publisher();
         List<ChatMessage> results = new ArrayList<>();
         for (ToolExecutionRequest call : ai.toolExecutionRequests()) {
-            rt.checkDeadline("before tool " + call.name());
-            publisher.toolStarted(call.name(), tools.label(call.name()).orElse("Working on it…"));
-            long t0 = System.nanoTime();
-            String result = tools.execute(call);
-            long ms = (System.nanoTime() - t0) / 1_000_000;
-            Outcome o = outcome(result, rt.registry());
-            publisher.toolFinished(call.name(), o.ok(), o.errorCode(), ms);
-            trace.recordToolStep(rt.runId(), call.name(), TraceRecorder.truncate(call.arguments(), ARGS_SUMMARY),
-                    o.summary(), o.errorCode(), (int) ms);
-            results.add(ToolExecutionResultMessage.from(call, result));
+            results.add(ToolExecutionResultMessage.from(call, runTool(rt, call).result()));
         }
-        return Map.of(AgentState.MESSAGES, results);
+        Map<String, Object> out = new HashMap<>();
+        out.put(AgentState.MESSAGES, results);
+        if (!rt.internal() && rt.transientFailures() >= AUTO_ESCALATE_FAILURES && !escalated(rt.registry())) {
+            String reason = "Automatic hand-off: our systems failed " + rt.transientFailures()
+                    + " times while handling this request.";
+            log.warn("Run {} auto-escalates after {} transient tool failures", rt.runId(), rt.transientFailures());
+            if (escalateInCode(rt, reason, EscalationService.Trigger.AUTO_TOOL_FAILURES) != null) {
+                out.put(AgentState.AUTO_ESCALATED, reason);
+            }
+        }
+        return out;
+    }
+
+    private static boolean escalated(TurnResultRegistry registry) {
+        return registry.all().stream().anyMatch(e -> e.data() instanceof ToolData.Escalated);
+    }
+
+    /**
+     * Escalates the turn's ticket in code (a button or an automatic trigger), with the same progress events as a
+     * tool call, a trace step {@code escalation:<trigger>} and the result registered under escalate_to_human, so the
+     * ESCALATION card is built from it. Returns the resultId, or null if the escalation failed (logged and traced).
+     */
+    private String escalateInCode(TurnRuntime rt, String reason, EscalationService.Trigger trigger) {
+        AgentEventPublisher publisher = rt.publisher();
+        publisher.toolStarted(SupportTools.ESCALATE_TO_HUMAN, ESCALATION_LABEL);
+        long t0 = System.nanoTime();
+        String step = "escalation:" + trigger;
+        try {
+            EscalationService.Outcome o = escalations.escalate(rt.ctx(), reason, trigger, rt.runId());
+            String id = rt.registry().register(SupportTools.ESCALATE_TO_HUMAN, SupportTools.toData(o));
+            int ms = (int) ((System.nanoTime() - t0) / 1_000_000);
+            publisher.toolFinished(SupportTools.ESCALATE_TO_HUMAN, true, null, ms);
+            trace.recordToolStep(rt.runId(), step, TraceRecorder.truncate(reason, ARGS_SUMMARY),
+                    rt.registry().get(id).map(Summaries::ofEntry).orElse(id)
+                            + "; " + o.supersededActions() + " open actions superseded", null, ms);
+            return id;
+        } catch (RuntimeException e) {
+            int ms = (int) ((System.nanoTime() - t0) / 1_000_000);
+            log.error("Run {}: escalation ({}) failed", rt.runId(), trigger, e);
+            publisher.toolFinished(SupportTools.ESCALATE_TO_HUMAN, false, "ESCALATION_FAILED", ms);
+            trace.recordToolStep(rt.runId(), step, TraceRecorder.truncate(reason, ARGS_SUMMARY),
+                    TraceRecorder.truncate(String.valueOf(e.getMessage()), 200), "ESCALATION_FAILED", ms);
+            return null;
+        }
+    }
+
+    /** One tool call with its progress events and trace step; used for model calls and code-made calls alike. */
+    private ToolCall runTool(TurnRuntime rt, ToolExecutionRequest call) {
+        BoundTools tools = rt.tools();
+        AgentEventPublisher publisher = rt.publisher();
+        rt.checkDeadline("before tool " + call.name());
+        publisher.toolStarted(call.name(), tools.label(call.name()).orElse("Working on it…"));
+        long t0 = System.nanoTime();
+        String result = tools.execute(call);
+        long ms = (System.nanoTime() - t0) / 1_000_000;
+        Outcome o = outcome(result, rt.registry());
+        if ("UNAVAILABLE".equals(o.errorCode()) || "TIMEOUT".equals(o.errorCode())) rt.recordTransientFailure();
+        publisher.toolFinished(call.name(), o.ok(), o.errorCode(), ms);
+        trace.recordToolStep(rt.runId(), call.name(), TraceRecorder.truncate(call.arguments(), ARGS_SUMMARY),
+                o.summary(), o.errorCode(), (int) ms);
+        return new ToolCall(result, o, o.ok() ? resultIdOf(result) : null);
+    }
+
+    private record ToolCall(String result, Outcome outcome, String resultId) {
     }
 
     private record Outcome(boolean ok, String errorCode, String summary) {
+    }
+
+    private String resultIdOf(String resultJson) {
+        try {
+            return json.readTree(resultJson).path("resultId").asString(null);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private Outcome outcome(String resultJson, TurnResultRegistry registry) {
@@ -254,19 +382,31 @@ public class SupportAgentGraph {
         ResponseStatus status;
         ComposeStep.Decision decision;
         String text;
-        if (state.budgetExhausted()) {
+        if (state.autoEscalated().isPresent()) {
             decision = compose.deterministic(registry);
-            status = ResponseStatus.ERROR;
-            text = BUDGET_TEXT;
+            status = decision.status();
+            text = FAILURE_ESCALATION_TEXT;
+        } else if (state.budgetExhausted()) {
+            boolean handedOff = !rt.internal() && (escalated(registry) || escalateInCode(rt,
+                    "Automatic hand-off: the assistant could not finish this request within its step limit.",
+                    EscalationService.Trigger.AUTO_STEP_BUDGET) != null);
+            decision = compose.deterministic(registry);
+            status = handedOff ? decision.status() : ResponseStatus.ERROR;
+            text = handedOff ? BUDGET_ESCALATION_TEXT : BUDGET_TEXT;
         } else {
             String finalText = state.finalText().orElse("");
             decision = compose.decide(finalText, registry, rt);
+            ActionEvent event = state.actionEvent().orElse(null);
+            if (event != null) decision = ActionFollowUp.frame(decision, event, registry);
             status = decision.status();
             text = finalText.isBlank() ? EMPTY_TEXT : finalText;
         }
-        BlockFactory.BlockSet set = blocks.build(registry, decision.show(), rt.ctx());
+        // once handed to a person, the reply offers no further buttons (and the ticket's open ones were superseded)
+        BlockFactory.BlockSet set = blocks.build(registry, decision.show(), rt.ctx(),
+                status != ResponseStatus.ESCALATED);
         AgentResponse response = new AgentResponse(AgentResponse.CURRENT_SCHEMA_VERSION, status, text,
-                set.blocks(), List.of(), decision.suggestedReplies(), rt.runId(), null, Instant.now());
+                set.blocks(), List.of(), decision.suggestedReplies(), set.suggestions(), rt.runId(), null,
+                Instant.now());
         rt.composed(response, set.actionIds());
         log.info("Run {} composed: mode={} status={} show={} blocks={}", rt.runId(), decision.mode(), status,
                 decision.show(), set.blocks().size());

@@ -73,6 +73,10 @@ public final class Summaries {
             case ToolData.ConfirmationPending c -> "CONFIRMATION_PENDING " + c.operation() + " " + c.target()
                     + (c.amount() == null ? "" : " " + money(c.amount(), c.currency())) + " (awaiting user)";
             case ToolData.TicketHistory h -> "TICKET_HISTORY " + h.messageCount() + " messages";
+            case ToolData.ChoicePending c -> "CHOICE_PENDING to " + c.then() + ": "
+                    + list(c.options(), o -> o.orderId() + " " + o.label()) + " (awaiting user)";
+            case ToolData.Escalated x -> "ESCALATED ticket " + x.ticketNumber() + " " + x.tier()
+                    + (x.alreadyEscalated() ? " (was already escalated)" : "");
             case null -> "nothing";
             default -> data.getClass().getSimpleName();
         };
@@ -127,7 +131,8 @@ public final class Summaries {
                     + (c.amount() == null ? "" : " " + money(c.amount(), c.currency()))
                     + " (" + confirmationState(c.actions()) + ")";
             case PolicyAnswerBlock p -> "POLICY_ANSWER: " + shorten(p.question());
-            case ChoiceRequestBlock c -> "CHOICE_REQUEST: " + shorten(c.prompt());
+            case ChoiceRequestBlock c -> "CHOICE_REQUEST: " + shorten(c.prompt()) + " "
+                    + list(c.options(), o -> o.label() + (o.action() == null ? "" : " " + o.action().state()));
             case EscalationBlock e -> "ESCALATION: " + e.ticketNumber() + " " + e.tier();
         };
         return cap(b.id() + " " + body);

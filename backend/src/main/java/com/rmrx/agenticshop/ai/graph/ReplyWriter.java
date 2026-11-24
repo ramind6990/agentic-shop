@@ -56,9 +56,7 @@ public class ReplyWriter {
             Instant now = Instant.now();
             TicketMessage m = messages.saveAndFlush(TicketMessage.envelope(ticket, response.text(),
                     json.valueToTree(response), response.schemaVersion(), internal, now));
-            AgentResponse saved = new AgentResponse(response.schemaVersion(), response.status(), response.text(),
-                    response.blocks(), response.citations(), response.suggestedReplies(), response.runId(),
-                    m.getId(), response.createdAt());
+            AgentResponse saved = response.withMessageId(m.getId());
             // the id exists only after the insert; store the payload again so it carries its messageId (detached
             // first, otherwise Hibernate's JSON dirty check writes the old payload back at commit)
             entityManager.detach(m);

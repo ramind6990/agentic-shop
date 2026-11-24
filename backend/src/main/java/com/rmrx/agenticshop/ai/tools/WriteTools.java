@@ -71,7 +71,7 @@ public class WriteTools extends AbstractTools {
             requireId("orderId", orderId);
             if (amount == null) throw PortException.invalid("amount is required");
             return propose(ActionType.REQUEST_REFUND,
-                    WriteParams.refund(orderId, new BigDecimal(Double.toString(amount)), reason));
+                    WriteParams.refund(orderId, BigDecimal.valueOf(amount), reason));
         });
     }
 

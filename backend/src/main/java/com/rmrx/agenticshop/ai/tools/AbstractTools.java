@@ -31,6 +31,11 @@ abstract class AbstractTools {
         this.json = json;
     }
 
+    /** This turn's registered results (e.g. to build a choice from orders already looked up). */
+    protected TurnResultRegistry registry() {
+        return registry;
+    }
+
     protected String run(String tool, Supplier<?> call) {
         ToolResult<?> result;
         try {

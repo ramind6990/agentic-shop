@@ -6,6 +6,8 @@ import com.rmrx.agenticshop.ai.action.ActionTokenService.Spec;
 import com.rmrx.agenticshop.ai.action.entity.ActionTargetType;
 import com.rmrx.agenticshop.ai.context.AgentContext;
 import com.rmrx.agenticshop.ai.contract.block.Block;
+import com.rmrx.agenticshop.ai.contract.block.ChoiceRequestBlock;
+import com.rmrx.agenticshop.ai.contract.block.EscalationBlock;
 import com.rmrx.agenticshop.ai.contract.block.OrderDetailBlock;
 import com.rmrx.agenticshop.ai.contract.block.OrderListBlock;
 import com.rmrx.agenticshop.ai.contract.block.OrderSummaryItem;
@@ -45,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -85,6 +88,15 @@ public class BlockFactory {
     }
 
     public BlockSet build(TurnResultRegistry registry, List<String> resultIds, AgentContext ctx) {
+        return build(registry, resultIds, ctx, true);
+    }
+
+    /**
+     * replyActions=false leaves out the reply-level suggestions (TALK_TO_HUMAN), e.g. once the conversation was
+     * handed to a human.
+     */
+    public BlockSet build(TurnResultRegistry registry, List<String> resultIds, AgentContext ctx,
+                          boolean replyActions) {
         List<TurnResultRegistry.Entry> entries = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         for (String id : new LinkedHashSet<>(resultIds == null ? List.<String>of() : resultIds)) {
@@ -110,7 +122,7 @@ public class BlockFactory {
                 assemblers.add(a);
             }
         }
-        List<Integer> suggestionRefs = policy.suggestions(ctx).stream()
+        List<Integer> suggestionRefs = !replyActions ? List.of() : policy.suggestions(ctx).stream()
                 .map(al -> batch.add(al, null, null, null)).toList();
 
         batch.issue();
@@ -144,6 +156,9 @@ public class BlockFactory {
             case ToolData.Tracking t -> tracking(id, t, registry);
             case ToolData.ReturnStatus r -> returnStatus(id, r, registry, batch, ctx);
             case ToolData.ConfirmationPending c -> () -> List.of(c.withId(id));
+            case ToolData.ChoicePending c -> one(choice(id, c, batch));
+            case ToolData.Escalated x -> () -> List.of(new EscalationBlock(id, x.reason(), x.ticketNumber(),
+                    x.tier(), x.expectedResponse()));
             default -> null;
         };
     }
@@ -312,6 +327,32 @@ public class BlockFactory {
                         f.status(), f.method()));
             }
             return out;
+        };
+    }
+
+    // ------------------------------------------------------------------ clarification
+
+    /**
+     * One SELECT_OPTION button per option, bound to the option's order; the options of one choice share a
+     * {@code pending} group id, so using one marks the others used (see ActionService#claimPair), and carry
+     * {@code then}, the action the click continues with.
+     */
+    private Supplier<ChoiceRequestBlock> choice(String id, ToolData.ChoicePending c, Batch batch) {
+        String group = UUID.randomUUID().toString();
+        List<Integer> refs = c.options().stream().map(o -> {
+            ObjectNode p = params("orderId", o.orderId());
+            p.put(ActionService.PENDING, group);
+            p.put(ActionService.THEN, c.then().name());
+            return batch.add(Allowed.of(ActionType.SELECT_OPTION), ActionTargetType.ORDER, o.orderId(), p);
+        }).toList();
+        return () -> {
+            List<ChoiceRequestBlock.Option> options = new ArrayList<>();
+            for (int i = 0; i < c.options().size(); i++) {
+                ToolData.ChoiceOption o = c.options().get(i);
+                List<ItemAction> a = batch.items(List.of(refs.get(i)));
+                options.add(new ChoiceRequestBlock.Option(o.label(), o.description(), a.isEmpty() ? null : a.getFirst()));
+            }
+            return new ChoiceRequestBlock(id, c.prompt(), options);
         };
     }
 

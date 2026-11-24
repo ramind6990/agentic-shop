@@ -68,6 +68,19 @@ public class TicketMessage extends BaseEntity {
         return m;
     }
 
+    /**
+     * A user's use of a chat action (ACTION): body is the readable line ("Confirmed: cancel order #50001"), payload
+     * the structured detail (action id, type, decision, target, outcome).
+     */
+    public static TicketMessage action(Ticket ticket, AppUser author, AuthorType authorType, String body,
+                                       JsonNode payload, int schemaVersion, boolean internal, Instant now) {
+        TicketMessage m = text(ticket, author, authorType, body, internal, now);
+        m.kind = MessageKind.ACTION;
+        m.payload = payload;
+        m.schemaVersion = schemaVersion;
+        return m;
+    }
+
     /** A structured agent reply (ENVELOPE) authored by the AI: body is the reply text, payload the full envelope. */
     public static TicketMessage envelope(Ticket ticket, String body, JsonNode payload, int schemaVersion,
                                          boolean internal, Instant now) {
@@ -80,6 +93,24 @@ public class TicketMessage extends BaseEntity {
         m.kind = MessageKind.ENVELOPE;
         m.payload = payload;
         m.schemaVersion = schemaVersion;
+        return m;
+    }
+
+    /**
+     * An automated notice (SYSTEM, no author), e.g. "Escalated to a human agent: …"; payload is optional structured
+     * detail.
+     */
+    public static TicketMessage system(Ticket ticket, String body, JsonNode payload, Integer schemaVersion,
+                                       boolean internal, Instant now) {
+        TicketMessage m = new TicketMessage();
+        m.ticket = ticket;
+        m.authorType = AuthorType.SYSTEM;
+        m.body = body;
+        m.internal = internal;
+        m.createdAt = now;
+        m.kind = MessageKind.SYSTEM;
+        m.payload = payload;
+        m.schemaVersion = payload == null ? null : schemaVersion;
         return m;
     }
 }

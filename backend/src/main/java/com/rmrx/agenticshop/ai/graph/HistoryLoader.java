@@ -31,8 +31,9 @@ import java.util.Objects;
  *
  * <p>Timeline mapping: TEXT from a person becomes a user message (prefixed with who wrote it when that is not the
  * caller's own side); an AI ENVELOPE becomes an assistant message of its text plus a compact summary of the blocks
- * it showed ({@code [shown r1 ORDER_LIST: …]}), never the full JSON; ACTION becomes a user note
- * ("[action] Confirmed: …"); SYSTEM becomes a short "[system note]". Internal notes are skipped for customers.
+ * it showed ({@code [shown r1 ORDER_LIST: …]}), never the full JSON; ACTION becomes a user line with
+ * its outcome ("[user action] Confirmed: cancel order #50001 → EXECUTED (…)"); SYSTEM becomes a "[system note]"
+ * system message. Internal notes are skipped for customers.
  */
 @Slf4j
 @Component
@@ -55,11 +56,27 @@ public class HistoryLoader {
     }
 
     public List<ChatMessage> initialMessages(TurnRuntime rt) {
+        List<ChatMessage> out = base(rt);
+        out.add(UserMessage.from(rt.userText()));
+        return out;
+    }
+
+    /**
+     * The model input of a turn started by a chat button: the "[user action] …" line as the user's turn (the same
+     * line later turns see in history), then the structured event and its results as a system note.
+     */
+    public List<ChatMessage> actionMessages(TurnRuntime rt, String actionLine, String eventNote) {
+        List<ChatMessage> out = base(rt);
+        out.add(UserMessage.from(actionLine));
+        out.add(SystemMessage.from(eventNote));
+        return out;
+    }
+
+    private List<ChatMessage> base(TurnRuntime rt) {
         List<ChatMessage> out = new ArrayList<>();
         out.add(SystemMessage.from(prompts.supportAgent().text() + "\n\n## Caller\n" + rt.identityLine()
                 + "\nToday is " + LocalDate.now(ZoneOffset.UTC) + "."));
         out.addAll(history(rt));
-        out.add(UserMessage.from(rt.userText()));
         return out;
     }
 
@@ -90,12 +107,13 @@ public class HistoryLoader {
         MessageKind kind = m.getKind() == null ? MessageKind.TEXT : m.getKind();
         return switch (kind) {
             case ENVELOPE -> AiMessage.from(nonBlank(withBlocks(body, m)));
-            case ACTION -> UserMessage.from("[action] " + nonBlank(body));
-            case SYSTEM -> UserMessage.from("[system note] " + nonBlank(body));
+            case ACTION -> UserMessage.from(ActionEvent.historyLine(nonBlank(body), field(m, "result"),
+                    field(m, "detail")));
+            case SYSTEM -> SystemMessage.from("[system note] " + nonBlank(body));
             case TEXT -> m.getAuthorType() == AuthorType.AI || m.getAuthorType() == null
                     ? AiMessage.from(nonBlank(body))
                     : m.getAuthorType() == AuthorType.SYSTEM
-                    ? UserMessage.from("[system note] " + nonBlank(body))
+                    ? SystemMessage.from("[system note] " + nonBlank(body))
                     : UserMessage.from(prefix(m.getAuthorType(), rt) + nonBlank(body));
         };
     }
@@ -122,6 +140,13 @@ public class HistoryLoader {
             log.warn("Envelope {} payload unreadable for history: {}", m.getId(), e.getMessage());
             return body;
         }
+    }
+
+    /** A text field of an ACTION payload, or null. */
+    private static String field(TicketMessage m, String key) {
+        if (m.getPayload() == null) return null;
+        var v = m.getPayload().get(key);
+        return v == null || v.isNull() ? null : v.asString();
     }
 
     private static String nonBlank(String s) {

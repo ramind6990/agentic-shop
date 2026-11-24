@@ -31,6 +31,8 @@ public class ActionService {
     public static final String PENDING = "pending";
     /** Params key holding the pending write's operation (CANCEL_ORDER, START_RETURN, REQUEST_REFUND). */
     public static final String OP = "op";
+    /** Params key of a SELECT_OPTION button: the action its click continues with for the chosen order. */
+    public static final String THEN = "then";
 
     /** An action's state for a timeline; never carries the token or its hash. */
     public record ActionStateView(Long id, ActionType type, ActionTargetType targetType, Long targetId,

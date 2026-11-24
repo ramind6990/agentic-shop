@@ -30,6 +30,10 @@ abstract class MockSupport {
     /** Runs the action on the caller's world under its lock. */
     <T> T inWorld(AgentContext ctx, Function<MockWorld, T> action) {
         MockWorld world = worlds.worldFor(ctx);
+        if (MockScenarios.OUTAGE.equals(world.scenario())) {
+            throw new PortException(com.rmrx.agenticshop.ai.contract.tool.ToolErrorCode.UNAVAILABLE,
+                    "upstream service unavailable (outage scenario)");
+        }
         return world.locked(() -> action.apply(world));
     }
 

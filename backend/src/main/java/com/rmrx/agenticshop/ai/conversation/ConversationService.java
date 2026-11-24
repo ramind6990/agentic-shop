@@ -1,17 +1,20 @@
 package com.rmrx.agenticshop.ai.conversation;
 
+import com.rmrx.agenticshop.ai.action.ActionNotFoundException;
 import com.rmrx.agenticshop.ai.action.ActionService;
 import com.rmrx.agenticshop.ai.action.ActionTokenService;
 import com.rmrx.agenticshop.ai.action.entity.AiAction;
 import com.rmrx.agenticshop.ai.action.repository.AiActionRepository;
 import com.rmrx.agenticshop.ai.config.AiProperties;
 import com.rmrx.agenticshop.ai.context.AgentContext;
+import com.rmrx.agenticshop.ai.contract.request.ActionRequest;
 import com.rmrx.agenticshop.ai.contract.request.StartConversationRequest;
 import com.rmrx.agenticshop.ai.conversation.ConversationDtos.ConversationClosed;
 import com.rmrx.agenticshop.ai.conversation.ConversationDtos.TimelineMessage;
 import com.rmrx.agenticshop.ai.conversation.ConversationDtos.TurnAccepted;
 import com.rmrx.agenticshop.ai.events.AgentEventPublisher;
 import com.rmrx.agenticshop.ai.events.RunEvents;
+import com.rmrx.agenticshop.ai.graph.ActionEvent;
 import com.rmrx.agenticshop.ai.graph.PromptRegistry;
 import com.rmrx.agenticshop.ai.graph.TurnRuntime;
 import com.rmrx.agenticshop.ai.tools.BoundTools;
@@ -45,6 +48,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Instant;
@@ -67,6 +71,11 @@ import java.util.stream.Collectors;
  * are excluded. At most one active run per ticket (409 otherwise). Everything needs {@code app.ai.enabled=true}
  * (503 otherwise).
  *
+ * <p>Escalated tickets (status ESCALATED, see {@code EscalationService}): the assistant stops acting for the
+ * customer. A customer's message is still stored but starts no turn ({@link #send} returns 202 with
+ * {@code runId=null, escalated=true}); a customer's chat button is 409 with code TICKET_ESCALATED (its token was
+ * superseded at escalation anyway). Staff keep using the assistant there as an internal copilot.
+ *
  * <p>Status handling: {@link #close} marks the ticket RESOLVED, not CLOSED. RESOLVED means "handled, may come back":
  * a new message reopens it (OPEN), which is what a customer ending a chat expects. CLOSED is the terminal back-office
  * state; a closed ticket rejects new messages (409).
@@ -77,6 +86,8 @@ public class ConversationService {
 
     public static final int SUBJECT_MAX = 120;
     public static final int MAX_PAGE_SIZE = 100;
+    /** Version of the ACTION message payload (the {@link ActionEvent} JSON). */
+    public static final int ACTION_SCHEMA_VERSION = 1;
 
     private final TicketService ticketAccess;
     private final TicketRepository tickets;
@@ -93,6 +104,8 @@ public class ConversationService {
     private final ObjectProvider<StreamingChatModel> streamingModel;
     private final AiActionRepository actionRepository;
     private final ActionService actionService;
+    private final ActionResolver actionResolver;
+    private final JsonMapper json;
     private final TransactionTemplate tx;
     private final TransactionTemplate readTx;
 
@@ -102,7 +115,7 @@ public class ConversationService {
                                PromptRegistry prompts, AiProperties props,
                                ObjectProvider<StreamingChatModel> streamingModel,
                                AiActionRepository actionRepository, ActionService actionService,
-                               PlatformTransactionManager tm) {
+                               ActionResolver actionResolver, JsonMapper json, PlatformTransactionManager tm) {
         this.ticketAccess = ticketAccess;
         this.tickets = tickets;
         this.messages = messages;
@@ -118,6 +131,8 @@ public class ConversationService {
         this.streamingModel = streamingModel;
         this.actionRepository = actionRepository;
         this.actionService = actionService;
+        this.actionResolver = actionResolver;
+        this.json = json;
         this.tx = new TransactionTemplate(tm);
         this.readTx = new TransactionTemplate(tm);
         this.readTx.setReadOnly(true);
@@ -192,6 +207,12 @@ public class ConversationService {
         AgentContext tctx = ctx.withTicketId(ticketId);
         TicketStatus current = readTx.execute(s -> ticket(ticketId).getStatus());
         if (current == TicketStatus.CLOSED) throw new ConversationExceptions.Conflict("Ticket is closed");
+        if (current == TicketStatus.ESCALATED && tctx.isCustomer()) {
+            // handed to a human: the message is stored for the support agent, but the assistant stays out
+            Saved saved = tx.execute(s -> saveUserMessage(tctx, ticketId, text, false));
+            log.info("Ticket {} is escalated: message {} stored without an AI turn", ticketId, saved.messageId());
+            return new TurnAccepted(null, ticketId, saved.ticketNumber(), saved.messageId(), true);
+        }
 
         ActiveRuns.Lease lease = activeRuns.tryAcquire(ticketId).orElseThrow(() ->
                 new ConversationExceptions.Conflict("A reply is still being written in this ticket; "
@@ -250,6 +271,87 @@ public class ConversationService {
         String full = user.getFullName();
         if (full != null && !full.isBlank()) return full.strip().split("\\s+")[0];
         return user.getUsername();
+    }
+
+    // ------------------------------------------------------------------ actions
+
+    /**
+     * Uses a chat button ({@code POST /api/ai/actions/{token}}) and starts the turn that answers it; returns at once
+     * like {@link #send}. The token identifies the ticket; anything that is not the caller's own token in a ticket
+     * they can still see is 404 (nothing leaks about other tokens). 409 while a run is live in that ticket (nothing
+     * is used then) or when the ticket is closed.
+     *
+     * <p>Order: lease, run started, the button used ({@link ActionResolver}: a confirmed write runs here, before the
+     * turn, so the ACTION message can record its outcome), the ACTION message saved (author = the caller; internal
+     * for staff, as their typed turns), then the turn runs with the {@link ActionEvent}. A stale button (expired,
+     * superseded, already used) writes nothing but is still recorded and answered with the current state, so a
+     * replay is harmless: it can never write twice.
+     */
+    public TurnAccepted act(AgentContext ctx, String rawToken, ActionRequest req) {
+        requireAi();
+        requireChatRole(ctx);
+        AiAction action = actionResolver.owned(ctx, rawToken);
+        Long ticketId = action.getTicketId();
+        try {
+            ticketAccess.get(ticketId);
+        } catch (NotFoundException e) {
+            throw new ActionNotFoundException(ActionNotFoundException.Reason.WRONG_TICKET);
+        }
+        ActionResolver.decisionOf(action, req); // 400 before anything is used
+        AgentContext tctx = ctx.withTicketId(ticketId);
+        TicketStatus current = readTx.execute(s -> ticket(ticketId).getStatus());
+        if (current == TicketStatus.CLOSED) throw new ConversationExceptions.Conflict("Ticket is closed");
+        if (current == TicketStatus.ESCALATED && tctx.isCustomer()) throw new ConversationExceptions.TicketEscalated();
+
+        ActiveRuns.Lease lease = activeRuns.tryAcquire(ticketId).orElseThrow(() ->
+                new ConversationExceptions.Conflict("A reply is still being written in this ticket; "
+                        + "wait for it to finish"));
+        UUID runId = null;
+        AgentEventPublisher publisher = null;
+        try {
+            boolean internal = tctx.isStaff();
+            PromptRegistry.Prompt prompt = prompts.supportAgent();
+            runId = trace.startRun(tctx, prompt.id(), props.chat().model());
+            activeRuns.bind(lease, runId);
+            publisher = runEvents.open(runId, tctx.userId());
+            publisher.runStarted(ticketId);
+            TurnResultRegistry registry = new TurnResultRegistry();
+            BoundTools tools = toolCatalog.toolsFor(tctx, registry);
+
+            long t0 = System.nanoTime();
+            ActionEvent event = actionResolver.use(tctx, action, rawToken, req, registry);
+            trace.recordToolStep(runId, "action:" + event.actionType(), "action " + event.actionId() + " "
+                            + event.messageText(), event.result() + (event.detail() == null ? "" : ": " + event.detail()),
+                    event.result() == ActionEvent.Result.FAILED ? "WRITE_FAILED" : null,
+                    (int) ((System.nanoTime() - t0) / 1_000_000));
+            log.info("Action {} ({}) by user {} in ticket {}: {}", event.actionId(), event.actionType(), tctx.userId(),
+                    ticketId, event.result());
+
+            Saved saved = tx.execute(s -> saveActionMessage(tctx, ticketId, event, internal));
+            TurnRuntime rt = new TurnRuntime(tctx, runId, saved.messageId(), event.messageText(),
+                    saved.identityLine(), internal, publisher, registry, tools, props.agent().turnTimeout(),
+                    prompt.id(), event);
+            runner.submit(rt, lease);
+            return new TurnAccepted(runId, ticketId, saved.ticketNumber(), saved.messageId());
+        } catch (RuntimeException e) {
+            activeRuns.release(lease);
+            if (runId != null) trace.finishRun(runId, AiRunStatus.FAILED, "START_FAILED", e.getMessage());
+            if (publisher != null) publisher.fail("START_FAILED", "The action could not be processed.", true);
+            throw e;
+        }
+    }
+
+    private Saved saveActionMessage(AgentContext ctx, Long ticketId, ActionEvent event, boolean internal) {
+        Ticket ticket = ticket(ticketId);
+        AppUser author = users.findById(ctx.userId()).orElseThrow(() -> new NotFoundException("User", ctx.userId()));
+        Instant now = Instant.now();
+        TicketMessage m = messages.save(TicketMessage.action(ticket, author,
+                ctx.isCustomer() ? AuthorType.CUSTOMER : AuthorType.STAFF, event.messageText(),
+                json.valueToTree(event), ACTION_SCHEMA_VERSION, internal, now));
+        if (ticket.getStatus() == TicketStatus.RESOLVED) ticket.changeStatus(TicketStatus.OPEN, now);
+        else ticket.touch(now);
+        messages.flush();
+        return new Saved(m.getId(), ticket.getTicketNumber(), identityLine(ctx, ticket, author));
     }
 
     // ------------------------------------------------------------------ timeline

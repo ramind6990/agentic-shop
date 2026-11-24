@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class PromptRegistry {
 
     public static final String SUPPORT_AGENT = "support-agent";
-    public static final String SUPPORT_AGENT_VERSION = "v1";
+    public static final String SUPPORT_AGENT_VERSION = "v2";
 
     /** A loaded prompt; id is {@code name.version}. */
     public record Prompt(String id, String text) {

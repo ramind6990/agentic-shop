@@ -36,15 +36,30 @@ public final class TurnRuntime {
     private final BoundTools tools;
     private final Instant deadline;
     private final String promptVersion;
+    private final ActionEvent actionEvent;
 
     private volatile AgentResponse response;
     private volatile List<Long> actionIds = List.of();
     private volatile Long replyMessageId;
     private volatile boolean finished;
+    /** UNAVAILABLE/TIMEOUT tool failures in this turn (auto-escalation trigger). */
+    private final java.util.concurrent.atomic.AtomicInteger transientFailures =
+            new java.util.concurrent.atomic.AtomicInteger();
 
     public TurnRuntime(AgentContext ctx, UUID runId, Long userMessageId, String userText, String identityLine,
                        boolean internal, AgentEventPublisher publisher,
                        TurnResultRegistry registry, BoundTools tools, Duration timeout, String promptVersion) {
+        this(ctx, runId, userMessageId, userText, identityLine, internal, publisher, registry, tools, timeout,
+                promptVersion, null);
+    }
+
+    /**
+     * A turn started by a chat button: userMessageId is the ACTION message, userText its readable line, and
+     * actionEvent what happened (it seeds the graph state).
+     */
+    public TurnRuntime(AgentContext ctx, UUID runId, Long userMessageId, String userText, String identityLine,
+                       boolean internal, AgentEventPublisher publisher, TurnResultRegistry registry,
+                       BoundTools tools, Duration timeout, String promptVersion, ActionEvent actionEvent) {
         this.ctx = ctx;
         this.runId = runId;
         this.userMessageId = userMessageId;
@@ -56,6 +71,12 @@ public final class TurnRuntime {
         this.tools = tools;
         this.deadline = Instant.now().plus(timeout);
         this.promptVersion = promptVersion;
+        this.actionEvent = actionEvent;
+    }
+
+    /** The button event that started this turn; null for a typed message. */
+    public ActionEvent actionEvent() {
+        return actionEvent;
     }
 
     public AgentContext ctx() {
@@ -137,6 +158,14 @@ public final class TurnRuntime {
     void persisted(AgentResponse response, Long messageId) {
         this.response = response;
         this.replyMessageId = messageId;
+    }
+
+    int recordTransientFailure() {
+        return transientFailures.incrementAndGet();
+    }
+
+    public int transientFailures() {
+        return transientFailures.get();
     }
 
     /** True once the run was closed (FINAL emitted, run finished). */

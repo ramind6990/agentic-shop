@@ -183,6 +183,14 @@ public class WriteGateway {
 
     /** Runs the confirmed write. Any unusable token is {@link ActionNotFoundException}; nothing is written then. */
     public CommitResult commit(AgentContext ctx, String confirmToken) {
+        return commit(ctx, confirmToken, true);
+    }
+
+    /**
+     * withBlock=false skips building the result block (and issuing its buttons): the chat round-trip registers the
+     * post-write state in the turn's registry instead, and the reply's blocks are built from there.
+     */
+    public CommitResult commit(AgentContext ctx, String confirmToken, boolean withBlock) {
         AiAction action = tokens.resolve(confirmToken, ctx);
         if (action.getActionType() != ActionType.CONFIRM) {
             throw tokens.notFound(Reason.WRONG_KIND, ctx, action);
@@ -197,21 +205,23 @@ public class WriteGateway {
             CommitResult result = switch (op) {
                 case CANCEL_ORDER -> {
                     WriteOutcome<OrderDetailView> w = orders.cancelOrder(ctx, p.orderId());
-                    yield new CommitResult(op, ActionOutcome.EXECUTED, w, blocks.orderDetail(blockId, w.state(), ctx));
+                    yield new CommitResult(op, ActionOutcome.EXECUTED, w,
+                            withBlock ? blocks.orderDetail(blockId, w.state(), ctx) : null);
                 }
                 case START_RETURN -> {
                     WriteOutcome<ReturnView> w = returns.createReturn(ctx, p.orderId(), p.orderItemId(),
                             p.returnReason(), p.note());
                     ReturnView r = w.state();
-                    yield new CommitResult(op, ActionOutcome.EXECUTED, w, new ReturnStatusBlock(blockId, r.id(),
-                            r.orderId(), r.orderNumber(), r.product(), r.qty(), r.status(), r.reason(), r.openedAt(),
-                            r.resolvedAt(), null, List.of()));
+                    yield new CommitResult(op, ActionOutcome.EXECUTED, w, !withBlock ? null
+                            : new ReturnStatusBlock(blockId, r.id(), r.orderId(), r.orderNumber(), r.product(),
+                            r.qty(), r.status(), r.reason(), r.openedAt(), r.resolvedAt(), null, List.of()));
                 }
                 case REQUEST_REFUND -> {
                     WriteOutcome<RefundView> w = refunds.issueRefund(ctx, p.orderId(), p.amount(), p.reason());
                     RefundView f = w.state();
-                    yield new CommitResult(op, ActionOutcome.EXECUTED, w, new RefundResultBlock(blockId, f.id(),
-                            f.orderId(), f.amount(), f.currency(), f.status(), f.method()));
+                    yield new CommitResult(op, ActionOutcome.EXECUTED, w, !withBlock ? null
+                            : new RefundResultBlock(blockId, f.id(), f.orderId(), f.amount(), f.currency(),
+                            f.status(), f.method()));
                 }
                 default -> throw new IllegalStateException(op.name());
             };
