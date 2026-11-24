@@ -1,5 +1,4 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
 
 import { LoadState } from '../../../../shared/ui/load-state/load-state';
 import { NotFoundPanel } from '../../../../shared/ui/not-found-panel/not-found-panel';
@@ -9,6 +8,7 @@ import { DocumentSectionView } from '../../components/document-section-view/docu
 import { VersionTimeline } from '../../components/version-timeline/version-timeline';
 import { DOCUMENT_TYPE_LABELS } from '../../models/document.model';
 import { DocumentViewerStore } from '../../state/document-viewer.store';
+import { AccessLink } from '../../../../shared/ui/access-link/access-link';
 
 /**
  * One document: version picker and "in force on" date (both kept in the URL), the sections of the shown version
@@ -17,13 +17,13 @@ import { DocumentViewerStore } from '../../state/document-viewer.store';
 @Component({
   selector: 'app-document-viewer',
   imports: [
-    RouterLink,
     LoadState,
     NotFoundPanel,
     RoleBadge,
     SectionCard,
     DocumentSectionView,
     VersionTimeline,
+    AccessLink,
   ],
   providers: [DocumentViewerStore],
   changeDetection: ChangeDetectionStrategy.OnPush,

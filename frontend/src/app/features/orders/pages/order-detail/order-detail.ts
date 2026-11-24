@@ -1,6 +1,5 @@
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { RouterLink } from '@angular/router';
 
 import { AddressBlock } from '../../../../shared/ui/address-block/address-block';
 import { Breadcrumbs, Crumb } from '../../../../shared/ui/breadcrumbs/breadcrumbs';
@@ -17,13 +16,13 @@ import { PaymentList } from '../../components/payment-list/payment-list';
 import { ShipmentList } from '../../components/shipment-list/shipment-list';
 import { OrderItem } from '../../models/order.model';
 import { OrderDetailStore } from '../../state/order-detail.store';
+import { AccessLink } from '../../../../shared/ui/access-link/access-link';
 
 /** Order detail: lines, returns and refunds on the left; totals, address, payments, shipments on the right. */
 @Component({
   selector: 'app-order-detail',
   imports: [
     DatePipe,
-    RouterLink,
     AddressBlock,
     Breadcrumbs,
     DataTable,
@@ -35,6 +34,7 @@ import { OrderDetailStore } from '../../state/order-detail.store';
     OrderTotals,
     PaymentList,
     ShipmentList,
+    AccessLink,
   ],
   providers: [OrderDetailStore],
   changeDetection: ChangeDetectionStrategy.OnPush,

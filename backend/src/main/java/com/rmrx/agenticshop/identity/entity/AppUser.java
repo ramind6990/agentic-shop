@@ -19,6 +19,14 @@ public class AppUser extends BaseEntity {
     @Column(nullable = false, unique = true)
     private String email;
 
+    /** Login name; null for users who cannot sign in. */
+    @Column(unique = true)
+    private String username;
+
+    /** BCrypt hash of the password; null for users who cannot sign in. */
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @Column(name = "full_name", nullable = false)
     private String fullName;
 

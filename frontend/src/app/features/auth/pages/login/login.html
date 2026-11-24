@@ -1,0 +1,55 @@
+<main class="login-page">
+  <div class="card login-card shadow-sm">
+    <div class="card-body p-4">
+      <h1 class="h4 mb-1">AgenticShop</h1>
+      <p class="text-body-secondary small mb-4">Sign in to continue</p>
+
+      @if (error(); as message) {
+        <div class="alert alert-danger py-2 small" role="alert">{{ message }}</div>
+      }
+
+      <form [formGroup]="form" (ngSubmit)="submit()" novalidate>
+        <div class="mb-3">
+          <label for="username" class="form-label">Username</label>
+          <input
+            id="username"
+            type="text"
+            class="form-control"
+            formControlName="username"
+            autocomplete="username"
+            autofocus
+            [class.is-invalid]="form.controls.username.touched && form.controls.username.invalid"
+            aria-describedby="username-error"
+          />
+          <div id="username-error" class="invalid-feedback">Enter your username.</div>
+        </div>
+
+        <div class="mb-4">
+          <label for="password" class="form-label">Password</label>
+          <input
+            id="password"
+            type="password"
+            class="form-control"
+            formControlName="password"
+            autocomplete="current-password"
+            [class.is-invalid]="form.controls.password.touched && form.controls.password.invalid"
+            aria-describedby="password-error"
+          />
+          <div id="password-error" class="invalid-feedback">Enter your password.</div>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100" [disabled]="submitting()">
+          @if (submitting()) {
+            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+          }
+          Sign in
+        </button>
+      </form>
+
+      <p class="text-body-secondary small mt-4 mb-0">
+        Demo accounts: <code>&lt;role&gt;_&lt;n&gt;</code> with the same password, e.g.
+        <code>admin_1</code>, <code>support_t1_2</code>, <code>seller_3</code>.
+      </p>
+    </div>
+  </div>
+</main>

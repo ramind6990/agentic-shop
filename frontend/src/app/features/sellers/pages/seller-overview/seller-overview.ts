@@ -35,37 +35,41 @@ import { SellerDetailStore } from '../../state/seller-detail.store';
             </dl>
           </app-section-card>
         </div>
-        <div class="col-lg-6">
-          <app-section-card title="Current fee agreement">
-            <a slot="actions" class="small" routerLink="contracts">All contracts</a>
-            @if (store.currentContract(); as contract) {
-              <dl class="kv-list">
-                <dt>Plan</dt>
-                <dd>{{ label(contract.feePlan) }}</dd>
-                <dt>Commission</dt>
-                <dd class="num">{{ contract.commissionRate | percent: '1.0-1' }} of each sale</dd>
-                <dt>Per-order fee</dt>
-                <dd class="num">{{ contract.perOrderFee | currency }}</dd>
-                <dt>Monthly fee</dt>
-                <dd class="num">{{ contract.monthlyFee | currency }}</dd>
-                <dt>Return window</dt>
-                <dd>{{ contract.returnWindowDays }} days</dd>
-                <dt>In force since</dt>
-                <dd>{{ contract.effectiveFrom | date: 'mediumDate' }}</dd>
-                <dt>Document</dt>
-                <dd>
-                  <a class="font-monospace" [routerLink]="['/documents', contract.documentCode]">{{
-                    contract.documentCode
-                  }}</a>
-                </dd>
-              </dl>
-            } @else if (store.contractsLoading()) {
-              <p class="small text-body-secondary mb-0">Loading…</p>
-            } @else {
-              <p class="small text-body-secondary mb-0">No fee agreement on file.</p>
-            }
-          </app-section-card>
-        </div>
+        @if (store.canSeeFinance()) {
+          <div class="col-lg-6">
+            <app-section-card title="Current fee agreement">
+              <a slot="actions" class="small" routerLink="contracts">All contracts</a>
+              @if (store.currentContract(); as contract) {
+                <dl class="kv-list">
+                  <dt>Plan</dt>
+                  <dd>{{ label(contract.feePlan) }}</dd>
+                  <dt>Commission</dt>
+                  <dd class="num">{{ contract.commissionRate | percent: '1.0-1' }} of each sale</dd>
+                  <dt>Per-order fee</dt>
+                  <dd class="num">{{ contract.perOrderFee | currency }}</dd>
+                  <dt>Monthly fee</dt>
+                  <dd class="num">{{ contract.monthlyFee | currency }}</dd>
+                  <dt>Return window</dt>
+                  <dd>{{ contract.returnWindowDays }} days</dd>
+                  <dt>In force since</dt>
+                  <dd>{{ contract.effectiveFrom | date: 'mediumDate' }}</dd>
+                  <dt>Document</dt>
+                  <dd>
+                    <a
+                      class="font-monospace"
+                      [routerLink]="['/documents', contract.documentCode]"
+                      >{{ contract.documentCode }}</a
+                    >
+                  </dd>
+                </dl>
+              } @else if (store.contractsLoading()) {
+                <p class="small text-body-secondary mb-0">Loading…</p>
+              } @else {
+                <p class="small text-body-secondary mb-0">No fee agreement on file.</p>
+              }
+            </app-section-card>
+          </div>
+        }
       </div>
     }
   `,
@@ -80,10 +84,16 @@ export class SellerOverview {
       return [];
     }
     const lastPaid = this.store.lastPaidPayout();
-    return [
+    const tiles: StatTile[] = [
       { label: 'Products', value: seller.stats.productCount.toLocaleString('en-US') },
       { label: 'Orders', value: seller.stats.orderCount.toLocaleString('en-US') },
       { label: 'Rating', value: seller.ratingAvg.toFixed(1), hint: 'Average across products' },
+    ];
+    if (!this.store.canSeeFinance()) {
+      return tiles;
+    }
+    return [
+      ...tiles,
       {
         label: 'Last payout',
         value: lastPaid

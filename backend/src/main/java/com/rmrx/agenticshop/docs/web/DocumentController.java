@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.docs.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.web.Paging;
 import com.rmrx.agenticshop.docs.dto.DocumentDtos.DocumentDetail;
@@ -13,8 +14,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 
-/** Policy, SOP, contract and playbook documents with their versions (ACLs enforced in a later phase). */
+/** Policy, SOP, contract and playbook documents with their versions, filtered by min_role and tenant. */
 @RestController
+@PreAuthorize("hasAuthority('DOCUMENTS_READ')")
 @RequestMapping("/api/documents")
 public class DocumentController {
 

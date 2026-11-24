@@ -27,13 +27,17 @@
           <div>
             <dt class="section-label">Customer</dt>
             <dd class="mb-0">
-              <a [routerLink]="['/customers', order.customer.id]">{{ order.customer.name }}</a>
+              <app-access-link [to]="['/customers', order.customer.id]">{{
+                order.customer.name
+              }}</app-access-link>
             </dd>
           </div>
           <div>
             <dt class="section-label">Seller</dt>
             <dd class="mb-0">
-              <a [routerLink]="['/sellers', order.seller.id]">{{ order.seller.name }}</a>
+              <app-access-link [to]="['/sellers', order.seller.id]">{{
+                order.seller.name
+              }}</app-access-link>
             </dd>
           </div>
         </dl>

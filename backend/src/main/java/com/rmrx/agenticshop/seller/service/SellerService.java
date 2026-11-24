@@ -12,6 +12,7 @@ import com.rmrx.agenticshop.seller.entity.SellerStatus;
 import com.rmrx.agenticshop.seller.repository.PayoutRepository;
 import com.rmrx.agenticshop.seller.repository.SellerContractRepository;
 import com.rmrx.agenticshop.seller.repository.SellerRepository;
+import com.rmrx.agenticshop.security.AccessScope;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -29,23 +30,27 @@ public class SellerService {
     private final ProductRepository productRepository;
     private final CustomerOrderRepository orderRepository;
     private final SellerMapper mapper;
+    private final AccessScope scope;
 
     public SellerService(SellerRepository sellerRepository, SellerContractRepository contractRepository,
                          PayoutRepository payoutRepository, ProductRepository productRepository,
-                         CustomerOrderRepository orderRepository, SellerMapper mapper) {
+                         CustomerOrderRepository orderRepository, SellerMapper mapper,
+                         AccessScope scope) {
         this.sellerRepository = sellerRepository;
         this.contractRepository = contractRepository;
         this.payoutRepository = payoutRepository;
         this.productRepository = productRepository;
         this.orderRepository = orderRepository;
         this.mapper = mapper;
+        this.scope = scope;
     }
 
     public PageResponse<SellerSummary> search(String q, SellerStatus status, String country, Pageable pageable) {
         Specification<Seller> spec = Specification.allOf(
                 Specs.containsIgnoreCase(q, "name", "legalName"),
                 Specs.eq("status", status),
-                Specs.eq("country", country));
+                Specs.eq("country", country),
+                Specs.eq("id", scope.sellerFilter(null)));
         return PageResponse.of(sellerRepository.findAll(spec, pageable), mapper::toSummary);
     }
 
@@ -74,10 +79,13 @@ public class SellerService {
         var found = idOrSlug.chars().allMatch(Character::isDigit)
                 ? sellerRepository.findById(Long.parseLong(idOrSlug))
                 : sellerRepository.findBySlug(idOrSlug);
-        return found.orElseThrow(() -> new NotFoundException("Seller", idOrSlug));
+        Seller seller = found.orElseThrow(() -> new NotFoundException("Seller", idOrSlug));
+        scope.requireOwned(null, seller.getId(), "Seller", idOrSlug);
+        return seller;
     }
 
     private void requireExists(Long sellerId) {
         if (!sellerRepository.existsById(sellerId)) throw new NotFoundException("Seller", sellerId);
+        scope.requireOwned(null, sellerId, "Seller", sellerId);
     }
 }

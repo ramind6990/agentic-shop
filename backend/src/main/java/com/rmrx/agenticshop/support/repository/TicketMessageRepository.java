@@ -11,5 +11,10 @@ public interface TicketMessageRepository extends JpaRepository<TicketMessage, Lo
     @EntityGraph(attributePaths = "author")
     Page<TicketMessage> findByTicketId(Long ticketId, Pageable pageable);
 
+    @EntityGraph(attributePaths = "author")
+    Page<TicketMessage> findByTicketIdAndInternalFalse(Long ticketId, Pageable pageable);
+
     long countByTicketId(Long ticketId);
+
+    long countByTicketIdAndInternalFalse(Long ticketId);
 }

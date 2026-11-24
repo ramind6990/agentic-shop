@@ -27,28 +27,32 @@
         }
       </select>
     </div>
-    <div class="col-6 col-md-3 col-xl-1">
-      <label for="order-seller" class="form-label small mb-1">Seller ID</label>
-      <input
-        id="order-seller"
-        appFilter="sellerId"
-        type="number"
-        min="1"
-        class="form-control form-control-sm"
-        placeholder="171"
-      />
-    </div>
-    <div class="col-6 col-md-3 col-xl-1">
-      <label for="order-customer" class="form-label small mb-1">Customer ID</label>
-      <input
-        id="order-customer"
-        appFilter="customerId"
-        type="number"
-        min="1"
-        class="form-control form-control-sm"
-        placeholder="1204"
-      />
-    </div>
+    @if (!auth.scopedToSeller()) {
+      <div class="col-6 col-md-3 col-xl-1">
+        <label for="order-seller" class="form-label small mb-1">Seller ID</label>
+        <input
+          id="order-seller"
+          appFilter="sellerId"
+          type="number"
+          min="1"
+          class="form-control form-control-sm"
+          placeholder="171"
+        />
+      </div>
+    }
+    @if (!auth.scopedToCustomer()) {
+      <div class="col-6 col-md-3 col-xl-1">
+        <label for="order-customer" class="form-label small mb-1">Customer ID</label>
+        <input
+          id="order-customer"
+          appFilter="customerId"
+          type="number"
+          min="1"
+          class="form-control form-control-sm"
+          placeholder="1204"
+        />
+      </div>
+    }
     <div class="col-6 col-md-3 col-xl-2">
       <label for="order-from" class="form-label small mb-1">From</label>
       <input id="order-from" appFilter="from" type="date" class="form-control form-control-sm" />

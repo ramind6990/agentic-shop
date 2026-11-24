@@ -9,6 +9,8 @@ import com.rmrx.agenticshop.support.dto.TicketDtos.TicketSummary;
 import com.rmrx.agenticshop.support.entity.*;
 import com.rmrx.agenticshop.support.repository.TicketMessageRepository;
 import com.rmrx.agenticshop.support.repository.TicketRepository;
+import com.rmrx.agenticshop.security.AccessScope;
+import com.rmrx.agenticshop.security.Permission;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -21,12 +23,14 @@ public class TicketService {
     private final TicketRepository ticketRepository;
     private final TicketMessageRepository messageRepository;
     private final TicketMapper mapper;
+    private final AccessScope scope;
 
     public TicketService(TicketRepository ticketRepository, TicketMessageRepository messageRepository,
-                         TicketMapper mapper) {
+                         TicketMapper mapper, AccessScope scope) {
         this.ticketRepository = ticketRepository;
         this.messageRepository = messageRepository;
         this.mapper = mapper;
+        this.scope = scope;
     }
 
     public PageResponse<TicketSummary> search(String q, TicketStatus status, TicketPriority priority,
@@ -38,19 +42,36 @@ public class TicketService {
                 Specs.eq("priority", priority),
                 Specs.eq("category", category),
                 Specs.eq("tier", tier),
-                Specs.eq("customer.id", customerId),
+                Specs.eq("customer.id", scope.customerFilter(customerId)),
                 Specs.eq("assignee.id", assigneeId),
-                Specs.eq("seller.id", sellerId));
+                Specs.eq("seller.id", scope.sellerFilter(sellerId)));
         return PageResponse.of(ticketRepository.findAll(spec, pageable), mapper::toSummary);
     }
 
     public TicketDetail get(Long id) {
-        Ticket ticket = ticketRepository.findById(id).orElseThrow(() -> new NotFoundException("Ticket", id));
-        return mapper.toDetail(ticket, messageRepository.countByTicketId(id));
+        Ticket ticket = requireVisible(id);
+        long messageCount = seesInternalNotes() ? messageRepository.countByTicketId(id)
+                : messageRepository.countByTicketIdAndInternalFalse(id);
+        return mapper.toDetail(ticket, messageCount);
     }
 
+    /** The thread, without staff-only internal notes unless the caller may read them. */
     public PageResponse<MessageDto> messages(Long ticketId, Pageable pageable) {
-        if (!ticketRepository.existsById(ticketId)) throw new NotFoundException("Ticket", ticketId);
-        return PageResponse.of(messageRepository.findByTicketId(ticketId, pageable), mapper::toMessage);
+        requireVisible(ticketId);
+        var page = seesInternalNotes() ? messageRepository.findByTicketId(ticketId, pageable)
+                : messageRepository.findByTicketIdAndInternalFalse(ticketId, pageable);
+        return PageResponse.of(page, mapper::toMessage);
+    }
+
+    private boolean seesInternalNotes() {
+        return scope.current().has(Permission.TICKET_INTERNAL_READ);
+    }
+
+    private Ticket requireVisible(Long ticketId) {
+        Ticket ticket = ticketRepository.findById(ticketId)
+                .orElseThrow(() -> new NotFoundException("Ticket", ticketId));
+        scope.requireOwned(ticket.getCustomer().getId(),
+                ticket.getSeller() == null ? null : ticket.getSeller().getId(), "Ticket", ticketId);
+        return ticket;
     }
 }

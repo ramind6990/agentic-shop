@@ -8,7 +8,10 @@ export interface NavGroup {
   items: NavItem[];
 }
 
-/** Left navigation, grouped by business area. Each path matches a top-level route. */
+/**
+ * Left navigation, grouped by business area. Each path matches a top-level route; items the user may not open
+ * (AREA_PERMISSIONS) are hidden by the side nav.
+ */
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: 'Catalog',

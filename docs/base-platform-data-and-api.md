@@ -1,8 +1,9 @@
 # AgenticShop base platform: data model and read API
 
 This is Phase 0 of the ShopOps plan (`ShopOps_Agentic_Practice_Plan.pdf`): a marketplace backend with many sellers
-and seeded fake data. It only reads data and has no authentication yet. Roles, tenants (sellers) and owner columns
-are already in the schema, so permission checks can be added later without changing it.
+and seeded fake data. It only reads data. Users sign in with a username and password and get a JWT. Each endpoint
+needs a permission derived from the user's role, and rows are scoped to the user (see "Authentication and
+permissions").
 
 - Backend: `backend/` (Spring Boot 4.1, Java 25, Maven). Package root `com.rmrx.agenticshop`.
 - Frontend: `frontend/` (Angular, to be added).
@@ -231,8 +232,67 @@ visible.
 | `/documents/{code}/effective?at=2025-03-01` | The version in force on a date (time-aware policy lookup). |
 | `/meta/enums` | Every enum's values, for UI dropdowns. |
 
+### Auth
+| Endpoint | Notes |
+|---|---|
+| `POST /auth/login` `{username, password}` | Returns `{token, expiresAt}`: an HS256 JWT valid for 8 hours. Wrong credentials or an inactive user: 401. |
+| `GET /auth/me` | The session: `id, username, fullName, email, role, seller, permissions[]`. |
+
+## Authentication and permissions
+
+Every endpoint except `POST /api/auth/login`, Swagger and `/actuator/health` needs `Authorization: Bearer <token>`.
+Spring Security's OAuth2 resource server checks the token. Its claims are `sub` (user id), `username`, `role` and
+`sellerId`. Code is in the `security/` package.
+
+| Env var | Default | Purpose |
+|---|---|---|
+| `JWT_SECRET` | a dev-only value | HS256 key, at least 32 bytes. Set it outside local dev. |
+| `JWT_TTL` | `8h` | Token lifetime. |
+
+Each request is checked in two steps:
+
+1. **Endpoint.** Each controller method requires one permission (`@PreAuthorize("hasAuthority('ORDERS_READ')")`).
+   `RolePermissions` gives each role a fixed set, and permissions are not stored in the token. A missing permission
+   returns 403. A missing, invalid or expired token returns 401. The customer tabs `/customers/{id}/orders` and
+   `/customers/{id}/tickets` also need `ORDERS_READ` and `TICKETS_READ`.
+2. **Rows** (`AccessScope`, used by the services):
+   - CUSTOMER users see only their own orders, returns, refunds and tickets.
+   - SELLER users see only their seller's orders, returns, refunds and tickets, plus its own profile, contracts and
+     payouts.
+   - On lists, the scope overrides the `customerId` / `sellerId` filters.
+   - On details, a row outside the scope returns 404, so ids cannot be probed.
+   - Staff see every row.
+
+| Role | Permissions |
+|---|---|
+| CUSTOMER | CATALOG, ORDERS, RETURNS, REFUNDS, TICKETS, DOCUMENTS (all `_READ`) |
+| SELLER | CATALOG, ORDERS, RETURNS, REFUNDS, TICKETS, SELLERS, SELLER_FINANCE, DOCUMENTS |
+| SUPPORT_T1, SUPPORT_T2 | CATALOG, ORDERS, RETURNS, REFUNDS, CUSTOMERS, SELLERS, USERS (assignees), TICKETS, TICKET_INTERNAL, DOCUMENTS |
+| FINANCE | CATALOG, ORDERS, RETURNS, REFUNDS, CUSTOMERS, SELLERS, SELLER_FINANCE, DOCUMENTS |
+| FRAUD | CATALOG, ORDERS, RETURNS, REFUNDS, CUSTOMERS, SELLERS, TICKETS, TICKET_INTERNAL, FLAGS, DOCUMENTS |
+| ADMIN | all |
+
+Documents and their sections follow `min_role`, which is not a ladder (`Role.satisfies`):
+
+| `min_role` | Who meets it |
+|---|---|
+| CUSTOMER | everyone |
+| SELLER | sellers and all staff |
+| SUPPORT_T1 | Tier 1, Tier 2 and admin |
+| SUPPORT_T2, FINANCE, FRAUD | that role and admin |
+
+A seller contract is visible, with all of its sections, to its own seller's users. Other sellers and customers never
+see tenant documents. Ticket messages marked `internal` are left out unless the caller has `TICKET_INTERNAL_READ`.
+
+**Demo logins** (`V111__seed_logins.sql`):
+- Three existing seeded users per role, named `<role>_<n>` with the same password: `customer_1`, `seller_2`,
+  `support_t1_3`, `support_t2_1`, `finance_1`, `fraud_1`, `admin_1`…
+- Customers are the ones with the most orders, and sellers are users of the busiest active sellers, so their scoped
+  screens have data.
+- Other users have no password and cannot sign in.
+- `V7__auth.sql` adds `username` and `password_hash`. `spring.flyway.out-of-order: true` lets schema migrations
+  added after the seed still apply.
+
 ## Deliberately not done yet
-- Authentication, request identity and row- or section-level permission checks. The data needed for them (`role`,
-  `seller_id`, `min_role`, owner columns) is already there.
 - Write endpoints and actions (refund, cancel…), chaos middleware, embeddings or vector search, and tests
   (Testcontainers is planned for the agent phases).

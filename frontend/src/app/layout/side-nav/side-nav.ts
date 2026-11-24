@@ -1,6 +1,7 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
+import { AuthStore } from '../../core/auth/auth.store';
 import { NAV_GROUPS } from './nav-items';
 
 @Component({
@@ -9,7 +10,7 @@ import { NAV_GROUPS } from './nav-items';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nav class="py-3 px-2" aria-label="Main">
-      @for (group of groups; track group.label) {
+      @for (group of groups(); track group.label) {
         <div class="mb-3">
           <div class="section-label px-2 mb-1" [id]="'nav-' + group.label">{{ group.label }}</div>
           <ul class="nav flex-column" [attr.aria-labelledby]="'nav-' + group.label">
@@ -32,5 +33,13 @@ import { NAV_GROUPS } from './nav-items';
   styleUrl: './side-nav.scss',
 })
 export class SideNav {
-  protected readonly groups = NAV_GROUPS;
+  private readonly auth = inject(AuthStore);
+
+  /** Only the screens this user may open; a group with none left is hidden. */
+  protected readonly groups = computed(() =>
+    NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter((item) => this.auth.canOpen(item.path)),
+    })).filter((group) => group.items.length > 0),
+  );
 }

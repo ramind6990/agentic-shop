@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.risk.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.dto.Ref;
 import com.rmrx.agenticshop.common.dto.RefMapper;
@@ -17,8 +18,9 @@ import org.springframework.web.bind.annotation.*;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-/** Fraud/risk flags (fraud-team data; access will be restricted once authentication exists). */
+/** Fraud/risk flags (fraud-team data: FRAUD and ADMIN only). */
 @RestController
+@PreAuthorize("hasAuthority('FLAGS_READ')")
 @RequestMapping("/api/flags")
 public class AccountFlagController {
 

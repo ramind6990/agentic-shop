@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.catalog.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.catalog.dto.CategoryDtos.AttributeFilter;
 import com.rmrx.agenticshop.catalog.dto.CategoryDtos.CategoryDetail;
 import com.rmrx.agenticshop.catalog.dto.CategoryDtos.CategoryNode;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@PreAuthorize("hasAuthority('CATALOG_READ')")
 @RequestMapping("/api")
 public class CatalogController {
 

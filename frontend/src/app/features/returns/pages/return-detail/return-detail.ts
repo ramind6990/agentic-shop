@@ -10,11 +10,21 @@ import { SectionCard } from '../../../../shared/ui/section-card/section-card';
 import { ReturnCard } from '../../components/return-card/return-card';
 import { Refund } from '../../models/return.model';
 import { ReturnDetailStore } from '../../state/return-detail.store';
+import { AccessLink } from '../../../../shared/ui/access-link/access-link';
 
 /** One return request (GET /api/returns/{id}): the request with both notes, who it involves, and the order's refunds. */
 @Component({
   selector: 'app-return-detail',
-  imports: [RouterLink, Breadcrumbs, DataTable, LoadState, NotFoundPanel, SectionCard, ReturnCard],
+  imports: [
+    RouterLink,
+    Breadcrumbs,
+    DataTable,
+    LoadState,
+    NotFoundPanel,
+    SectionCard,
+    ReturnCard,
+    AccessLink,
+  ],
   providers: [ReturnDetailStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -59,7 +69,9 @@ import { ReturnDetailStore } from '../../state/return-detail.store';
                   </dd>
                   <dt>Customer</dt>
                   <dd>
-                    <a [routerLink]="['/customers', item.customer.id]">{{ item.customer.name }}</a>
+                    <app-access-link [to]="['/customers', item.customer.id]">{{
+                      item.customer.name
+                    }}</app-access-link>
                   </dd>
                   <dt>Product</dt>
                   <dd>

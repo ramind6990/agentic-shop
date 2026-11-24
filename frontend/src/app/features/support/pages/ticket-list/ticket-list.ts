@@ -5,6 +5,7 @@ import { FilterControl } from '../../../../shared/ui/filter-control/filter-contr
 import { ListLayout } from '../../../../shared/ui/list-layout/list-layout';
 import { TicketTable } from '../../components/ticket-table/ticket-table';
 import { TicketListStore } from '../../state/ticket-list.store';
+import { AuthStore } from '../../../../core/auth/auth.store';
 
 /** Support tickets (GET /api/tickets), most recently updated first. Filters and page live in the URL. */
 @Component({
@@ -16,5 +17,6 @@ import { TicketListStore } from '../../state/ticket-list.store';
   templateUrl: './ticket-list.html',
 })
 export class TicketList {
+  protected readonly auth = inject(AuthStore);
   protected readonly store = inject(TicketListStore);
 }

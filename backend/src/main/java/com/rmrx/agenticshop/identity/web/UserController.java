@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.identity.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.catalog.dto.ProductDtos.CustomerReviewDto;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.web.Paging;
@@ -30,6 +31,7 @@ public class UserController {
         this.ticketService = ticketService;
     }
 
+    @PreAuthorize("hasAuthority('CUSTOMERS_READ')")
     @GetMapping("/customers")
     public PageResponse<CustomerSummary> customers(@RequestParam(required = false) String q,
                                                    @RequestParam(required = false) UserStatus status,
@@ -38,11 +40,13 @@ public class UserController {
         return userService.searchCustomers(q, status, Paging.of(page, size, Sort.by("fullName", "id")));
     }
 
+    @PreAuthorize("hasAuthority('CUSTOMERS_READ')")
     @GetMapping("/customers/{id}")
     public CustomerDetail customer(@PathVariable Long id) {
         return userService.getCustomer(id);
     }
 
+    @PreAuthorize("hasAuthority('CUSTOMERS_READ') and hasAuthority('ORDERS_READ')")
     @GetMapping("/customers/{id}/orders")
     public PageResponse<OrderSummary> customerOrders(@PathVariable Long id,
                                                      @RequestParam(defaultValue = "0") int page,
@@ -52,6 +56,7 @@ public class UserController {
                 Paging.of(page, size, Sort.by(Sort.Order.desc("placedAt"), Sort.Order.desc("id"))));
     }
 
+    @PreAuthorize("hasAuthority('CUSTOMERS_READ') and hasAuthority('TICKETS_READ')")
     @GetMapping("/customers/{id}/tickets")
     public PageResponse<TicketSummary> customerTickets(@PathVariable Long id,
                                                        @RequestParam(defaultValue = "0") int page,
@@ -61,6 +66,7 @@ public class UserController {
                 Paging.of(page, size, Sort.by(Sort.Order.desc("updatedAt"), Sort.Order.desc("id"))));
     }
 
+    @PreAuthorize("hasAuthority('CUSTOMERS_READ')")
     @GetMapping("/customers/{id}/reviews")
     public PageResponse<CustomerReviewDto> customerReviews(@PathVariable Long id,
                                                            @RequestParam(defaultValue = "0") int page,
@@ -70,6 +76,7 @@ public class UserController {
     }
 
     /** Staff and seller accounts with their roles. */
+    @PreAuthorize("hasAuthority('USERS_READ')")
     @GetMapping("/users")
     public PageResponse<UserDto> users(@RequestParam(required = false) Role role,
                                        @RequestParam(required = false) Long sellerId,

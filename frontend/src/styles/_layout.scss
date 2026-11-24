@@ -37,8 +37,11 @@
   }
 }
 
+// Scroll containers are positioned, so absolutely positioned descendants (e.g. Bootstrap's .visually-hidden
+// labels) stay inside them. Otherwise they are placed relative to <body> and stretch the window's own scroll.
 .app-content {
   grid-area: content;
+  position: relative;
   overflow-y: auto;
   padding: map-get($spacers, 4);
 
@@ -63,6 +66,7 @@
   }
 
   .scroll-pane {
+    position: relative;
     height: 100%;
     overflow-y: auto;
     overscroll-behavior: contain;

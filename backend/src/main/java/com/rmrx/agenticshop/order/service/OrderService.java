@@ -14,6 +14,7 @@ import com.rmrx.agenticshop.order.repository.ShipmentRepository;
 import com.rmrx.agenticshop.returns.repository.RefundRepository;
 import com.rmrx.agenticshop.returns.repository.ReturnRequestRepository;
 import com.rmrx.agenticshop.returns.service.ReturnMapper;
+import com.rmrx.agenticshop.security.AccessScope;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -33,11 +34,12 @@ public class OrderService {
     private final OrderMapper mapper;
     private final ReturnMapper returnMapper;
     private final RefMapper refs;
+    private final AccessScope scope;
 
     public OrderService(CustomerOrderRepository orderRepository, PaymentRepository paymentRepository,
                         ShipmentRepository shipmentRepository, ReturnRequestRepository returnRepository,
                         RefundRepository refundRepository, OrderMapper mapper, ReturnMapper returnMapper,
-                        RefMapper refs) {
+                        RefMapper refs, AccessScope scope) {
         this.orderRepository = orderRepository;
         this.paymentRepository = paymentRepository;
         this.shipmentRepository = shipmentRepository;
@@ -46,6 +48,7 @@ public class OrderService {
         this.mapper = mapper;
         this.returnMapper = returnMapper;
         this.refs = refs;
+        this.scope = scope;
     }
 
     public PageResponse<OrderSummary> search(String q, OrderStatus status, Long customerId, Long sellerId,
@@ -53,8 +56,8 @@ public class OrderService {
         Specification<CustomerOrder> spec = Specification.allOf(
                 Specs.containsIgnoreCase(q, "orderNumber"),
                 Specs.eq("status", status),
-                Specs.eq("customer.id", customerId),
-                Specs.eq("seller.id", sellerId),
+                Specs.eq("customer.id", scope.customerFilter(customerId)),
+                Specs.eq("seller.id", scope.sellerFilter(sellerId)),
                 Specs.gte("placedAt", from),
                 Specs.lt("placedAt", to));
         return PageResponse.of(orderRepository.findAll(spec, pageable), mapper::toSummary);
@@ -66,6 +69,7 @@ public class OrderService {
                 ? orderRepository.findDetailedById(Long.parseLong(idOrNumber))
                 : orderRepository.findByOrderNumber(idOrNumber))
                 .orElseThrow(() -> new NotFoundException("Order", idOrNumber));
+        scope.requireOwned(o.getCustomer().getId(), o.getSeller().getId(), "Order", idOrNumber);
         Long id = o.getId();
         return new OrderDetail(o.getId(), o.getOrderNumber(), o.getStatus(), o.getPlacedAt(),
                 refs.user(o.getCustomer()), refs.seller(o.getSeller()), mapper.toAddress(o.getShippingAddress()),

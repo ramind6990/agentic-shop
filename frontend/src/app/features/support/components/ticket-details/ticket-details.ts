@@ -5,11 +5,12 @@ import { RouterLink } from '@angular/router';
 import { StatusBadge } from '../../../../shared/ui/status-badge/status-badge';
 import { enumLabel } from '../../../../shared/utils/enum-label';
 import { TicketDetail } from '../../models/ticket.model';
+import { AccessLink } from '../../../../shared/ui/access-link/access-link';
 
 /** Ticket facts for the side panel: state, routing and the people and order involved. */
 @Component({
   selector: 'app-ticket-details',
-  imports: [DatePipe, DecimalPipe, RouterLink, StatusBadge],
+  imports: [DatePipe, DecimalPipe, RouterLink, StatusBadge, AccessLink],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let t = ticket();
@@ -25,11 +26,17 @@ import { TicketDetail } from '../../models/ticket.model';
       <dt>Assignee</dt>
       <dd>{{ t.assignee?.name ?? 'Unassigned' }}</dd>
       <dt>Customer</dt>
-      <dd><a [routerLink]="['/customers', t.customer.id]">{{ t.customer.name }}</a></dd>
+      <dd>
+        <app-access-link [to]="['/customers', t.customer.id]">{{
+          t.customer.name
+        }}</app-access-link>
+      </dd>
       <dt>Order</dt>
       <dd>
         @if (t.order; as order) {
-          <a class="font-monospace" [routerLink]="['/orders', order.orderNumber]">{{ order.orderNumber }}</a>
+          <a class="font-monospace" [routerLink]="['/orders', order.orderNumber]">{{
+            order.orderNumber
+          }}</a>
         } @else {
           –
         }
@@ -37,7 +44,7 @@ import { TicketDetail } from '../../models/ticket.model';
       <dt>Seller</dt>
       <dd>
         @if (t.seller; as seller) {
-          <a [routerLink]="['/sellers', seller.id]">{{ seller.name }}</a>
+          <app-access-link [to]="['/sellers', seller.id]">{{ seller.name }}</app-access-link>
         } @else {
           –
         }
@@ -45,9 +52,13 @@ import { TicketDetail } from '../../models/ticket.model';
       <dt>Messages</dt>
       <dd class="num">{{ t.messageCount | number }}</dd>
       <dt>Created</dt>
-      <dd><time [attr.datetime]="t.createdAt">{{ t.createdAt | date: 'MMM d, y, HH:mm' }}</time></dd>
+      <dd>
+        <time [attr.datetime]="t.createdAt">{{ t.createdAt | date: 'MMM d, y, HH:mm' }}</time>
+      </dd>
       <dt>Updated</dt>
-      <dd><time [attr.datetime]="t.updatedAt">{{ t.updatedAt | date: 'MMM d, y, HH:mm' }}</time></dd>
+      <dd>
+        <time [attr.datetime]="t.updatedAt">{{ t.updatedAt | date: 'MMM d, y, HH:mm' }}</time>
+      </dd>
     </dl>
   `,
 })

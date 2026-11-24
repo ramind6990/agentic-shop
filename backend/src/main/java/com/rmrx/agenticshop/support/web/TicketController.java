@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.support.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.web.Paging;
 import com.rmrx.agenticshop.support.dto.TicketDtos.MessageDto;
@@ -14,6 +15,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@PreAuthorize("hasAuthority('TICKETS_READ')")
 @RequestMapping("/api/tickets")
 public class TicketController {
 

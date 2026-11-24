@@ -12,7 +12,7 @@ Filters, sorting and paging are kept in the URL.
 
 ## Layout
 
-A fixed shell: top bar (app name, global search, a "View as" role selector reserved for the auth phase), a left
+A fixed shell: top bar (app name, global search, signed-in user with Sign out), a left
 nav grouped by area, and the routed page. List screens and the split screens (product search, ticket thread,
 documents) fill the window and only their results pane scrolls; detail pages scroll as a whole.
 
@@ -99,12 +99,54 @@ Scopes:
 - App-wide caches are root stores: `MetaStore` (enums for dropdowns) and `CategoryTreeStore` (the taxonomy, used by
   the category browser and the brands category filter).
 - Shared UI components (`pager`, `data-table`, `list-layout`…) stay presentational: inputs and outputs only, never a
-  store. The one exception is `appFilter`, which binds to the list state the page provides.
+  store. The exceptions are `appFilter`, which binds to the list state the page provides, and `data-table` /
+  `access-link`, which ask `AuthStore` whether a link may be shown.
 
 URL parameters use the API names, so `/products?categoryId=46&brandIds=3&attr.ram_gb=16,32&sort=price_asc&page=1`
 maps directly to `/api/products?...` (page is 0-based in both). Other screen state in the URL: the product review
 list (`reviewRating`, `reviewSort`, `reviewPage`) and the document version (`version` or `at`). How far a ticket
 thread has been loaded is screen state and stays out of the URL.
+
+## Authentication
+
+- `/login` (`features/auth/pages/login`) is outside the shell. Every other route is a child of the shell route, which
+  `authGuard` protects. A signed-out user goes to `/login?returnUrl=…` and comes back to that page after signing in.
+- `core/auth/AuthStore` (root):
+  - keeps the token and its expiry in localStorage (`agenticshop.token`)
+  - keeps the session from `/api/auth/me`: profile, role, seller and permissions
+  - exposes `isLoggedIn` and `can(permission)`
+- On app start, `provideAppInitializer` loads the session for a stored token, so a reload stays signed in and guards
+  know the user. A stored token the backend rejects is dropped.
+- `authInterceptor` adds `Authorization: Bearer` to `/api` calls. A 401 on any call except login signs the user out
+  and sends them to `/login` with the current URL as `returnUrl`.
+- The top bar shows the user, their role badge and Sign out.
+
+### What the user sees
+
+The backend enforces access; the UI only hides what would fail. Everything asks `AuthStore`:
+
+- `core/auth/access.ts`: `AREA_PERMISSIONS` maps each top-level path (`orders`, `flags`…) to its permission. It is
+  the single source for the guard, the nav and the links.
+- `canOpen(commands | url)`: whether a link would open. It checks the area permission, and a seller user may only open
+  their own seller's page.
+- Routes:
+  - Each area route has `canMatch: [permissionGuard]`.
+  - Detail-page tabs that need more set `data: { permission }`: seller orders, contracts, payouts and flags, and
+    customer orders, tickets and flags.
+  - A denied route shows the "No access" page (`/forbidden`).
+- Side nav: shows only the items `canOpen` allows, and hides empty groups.
+- Detail tabs: the customer and seller frames filter their tabs by the same permissions.
+- `SellerDetailStore` only loads contracts and payouts with `SELLER_FINANCE_READ`. The overview's fee card and
+  "Last payout" tile are hidden without it.
+- Cross-links:
+  - `app-access-link` (`shared/ui/access-link`) renders a router link when `canOpen` allows it, and plain text
+    otherwise.
+  - `data-table` does the same for column links.
+  - These two and `appFilter` are the shared UI pieces that read app state.
+- Filters: list pages hide the customer filter for customers and the seller filter for seller users, since the
+  backend scopes those anyway. The ticket assignee filter needs `USERS_READ`.
+- `*appCan="'FLAGS_READ'"` (`core/auth/can.directive.ts`) shows an element only with a permission.
+- The top-bar search only routes to screens the user can open. Anything else becomes a product search.
 
 ## Known gaps
 

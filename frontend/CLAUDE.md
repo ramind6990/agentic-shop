@@ -39,8 +39,9 @@ npx ng generate component <path/name>
 - The backend needs Postgres, which runs through Docker on another machine. Ask the user to run `docker compose up -d`
   and start the backend (`mvn spring-boot:run` in `../backend`) before checking anything that calls the API.
 - API contract: Swagger UI at `http://localhost:8080/swagger-ui.html`, OpenAPI JSON at `/v3/api-docs`.
-- Everything is read-only (`GET`) with no authentication yet. Roles and seller tenancy exist in the data but are not
-  enforced, so the UI currently sees everything.
+- Everything is read-only (`GET`). Every call except login needs a JWT, which `core/auth/auth.interceptor.ts` adds.
+  The backend enforces permissions and row scope by role: customers and sellers only get their own data. Sign in
+  with a demo login such as `admin_1` / `admin_1` (see the docs).
 - Paged responses always have the shape `{ content, page, size, totalElements, totalPages }`. `page` starts at 0 and
   `size` is capped at 100. Errors are RFC 9457 ProblemDetail.
 - `/api/meta/enums` returns every enum's values for dropdowns, so don't hard-code status lists.

@@ -17,7 +17,7 @@
         @for (column of columns(); track column.header) {
           <td [class.text-end]="isRight(column)" [class.num]="isRight(column)">
             <ng-container
-              [ngTemplateOutlet]="column.link && column.value(row) !== null ? linked : plain"
+              [ngTemplateOutlet]="isLinked(row, column) ? linked : plain"
               [ngTemplateOutletContext]="{ $implicit: row, column }"
             />
             @if (column.hint && column.hint(row); as hint) {

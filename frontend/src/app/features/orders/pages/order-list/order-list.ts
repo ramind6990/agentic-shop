@@ -5,6 +5,7 @@ import { FilterControl } from '../../../../shared/ui/filter-control/filter-contr
 import { ListLayout } from '../../../../shared/ui/list-layout/list-layout';
 import { OrderTable } from '../../components/order-table/order-table';
 import { OrderListStore } from '../../state/order-list.store';
+import { AuthStore } from '../../../../core/auth/auth.store';
 
 /** Order list with filters (number, status, customer, seller, date range), all kept in the URL. */
 @Component({
@@ -16,5 +17,6 @@ import { OrderListStore } from '../../state/order-list.store';
   templateUrl: './order-list.html',
 })
 export class OrderList {
+  protected readonly auth = inject(AuthStore);
   protected readonly store = inject(OrderListStore);
 }

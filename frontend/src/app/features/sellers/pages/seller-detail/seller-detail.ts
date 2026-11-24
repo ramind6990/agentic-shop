@@ -2,6 +2,8 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
+import { AuthStore } from '../../../../core/auth/auth.store';
+import { Permission } from '../../../../core/auth/auth.models';
 import { Breadcrumbs, Crumb } from '../../../../shared/ui/breadcrumbs/breadcrumbs';
 import { EntityHeader } from '../../../../shared/ui/entity-header/entity-header';
 import { LoadState } from '../../../../shared/ui/load-state/load-state';
@@ -59,6 +61,7 @@ import { SellerDetailStore } from '../../state/seller-detail.store';
 })
 export class SellerDetail {
   protected readonly store = inject(SellerDetailStore);
+  private readonly auth = inject(AuthStore);
   protected readonly label = enumLabel;
 
   protected readonly crumbs = computed<Crumb[]>(() => [
@@ -66,15 +69,32 @@ export class SellerDetail {
     { label: this.store.seller()?.name ?? '' },
   ]);
 
+  /** Tabs the user may open (the routes have the same permissions). */
   protected readonly tabs = computed<TabLink[]>(() => {
     const seller = this.store.seller();
-    return [
+    const tabs: (TabLink & { permission?: Permission })[] = [
       { label: 'Overview', path: '' },
       { label: 'Products', path: 'products', count: seller?.stats.productCount },
-      { label: 'Orders', path: 'orders', count: seller?.stats.orderCount },
-      { label: 'Contracts', path: 'contracts', count: this.store.contracts().length || undefined },
-      { label: 'Payouts', path: 'payouts', count: this.store.payoutCount() },
-      { label: 'Flags', path: 'flags' },
+      {
+        label: 'Orders',
+        path: 'orders',
+        count: seller?.stats.orderCount,
+        permission: 'ORDERS_READ',
+      },
+      {
+        label: 'Contracts',
+        path: 'contracts',
+        count: this.store.contracts().length || undefined,
+        permission: 'SELLER_FINANCE_READ',
+      },
+      {
+        label: 'Payouts',
+        path: 'payouts',
+        count: this.store.payoutCount(),
+        permission: 'SELLER_FINANCE_READ',
+      },
+      { label: 'Flags', path: 'flags', permission: 'FLAGS_READ' },
     ];
+    return tabs.filter((tab) => !tab.permission || this.auth.can(tab.permission));
   });
 }

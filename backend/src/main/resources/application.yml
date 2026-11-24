@@ -17,12 +17,20 @@ spring:
         jdbc.time_zone: UTC
   flyway:
     locations: classpath:db/migration,classpath:db/seed
+    # schema migrations (V1..V99) added after the seed (V100+) has run must still apply
+    out-of-order: true
     placeholders:
       seed_customers: ${SEED_CUSTOMERS:20000}
       seed_sellers: ${SEED_SELLERS:500}
       seed_products: ${SEED_PRODUCTS:50000}
       seed_orders: ${SEED_ORDERS:100000}
       seed_tickets: ${SEED_TICKETS:15000}
+
+app:
+  jwt:
+    # HS256 key, at least 32 bytes. Override in every non-dev environment.
+    secret: ${JWT_SECRET:agenticshop-dev-only-secret-change-me-0123456789}
+    ttl: ${JWT_TTL:8h}
 
 server:
   port: ${PORT:8080}

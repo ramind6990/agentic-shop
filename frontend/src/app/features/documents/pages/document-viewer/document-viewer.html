@@ -13,7 +13,9 @@
           <span class="small text-body-secondary">{{ typeLabel() }}</span>
           <app-role-badge prefix="Readable from:" [role]="d.minRole" />
           @if (d.seller; as seller) {
-            <a class="small" [routerLink]="['/sellers', seller.id]">{{ seller.name }}</a>
+            <app-access-link linkClass="small" [to]="['/sellers', seller.id]">{{
+              seller.name
+            }}</app-access-link>
           }
         </div>
         <h1 class="h4 mb-0">{{ d.title }}</h1>

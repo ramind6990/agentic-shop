@@ -53,39 +53,45 @@
         <option value="T2">Tier 2</option>
       </select>
     </div>
-    <div class="col-6 col-md-4 col-xl-2">
-      <label for="tk-assignee" class="form-label small mb-1">Assignee</label>
-      <select id="tk-assignee" appFilter="assigneeId" class="form-select form-select-sm">
-        <option value="">Anyone</option>
-        @for (a of store.agents(); track a.id) {
-          <option [value]="a.id">
-            {{ a.fullName }} ({{ a.role === 'SUPPORT_T2' ? 'T2' : 'T1' }})
-          </option>
-        }
-      </select>
-    </div>
-    <div class="col-6 col-md-4 col-xl-1">
-      <label for="tk-seller" class="form-label small mb-1">Seller ID</label>
-      <input
-        id="tk-seller"
-        appFilter="sellerId"
-        type="number"
-        min="1"
-        class="form-control form-control-sm"
-        placeholder="171"
-      />
-    </div>
-    <div class="col-6 col-md-4 col-xl-1">
-      <label for="tk-customer" class="form-label small mb-1">Customer ID</label>
-      <input
-        id="tk-customer"
-        appFilter="customerId"
-        type="number"
-        min="1"
-        class="form-control form-control-sm"
-        placeholder="4859"
-      />
-    </div>
+    @if (auth.can('USERS_READ')) {
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="tk-assignee" class="form-label small mb-1">Assignee</label>
+        <select id="tk-assignee" appFilter="assigneeId" class="form-select form-select-sm">
+          <option value="">Anyone</option>
+          @for (a of store.agents(); track a.id) {
+            <option [value]="a.id">
+              {{ a.fullName }} ({{ a.role === 'SUPPORT_T2' ? 'T2' : 'T1' }})
+            </option>
+          }
+        </select>
+      </div>
+    }
+    @if (!auth.scopedToSeller()) {
+      <div class="col-6 col-md-4 col-xl-1">
+        <label for="tk-seller" class="form-label small mb-1">Seller ID</label>
+        <input
+          id="tk-seller"
+          appFilter="sellerId"
+          type="number"
+          min="1"
+          class="form-control form-control-sm"
+          placeholder="171"
+        />
+      </div>
+    }
+    @if (!auth.scopedToCustomer()) {
+      <div class="col-6 col-md-4 col-xl-1">
+        <label for="tk-customer" class="form-label small mb-1">Customer ID</label>
+        <input
+          id="tk-customer"
+          appFilter="customerId"
+          type="number"
+          min="1"
+          class="form-control form-control-sm"
+          placeholder="4859"
+        />
+      </div>
+    }
     <div class="col-6 col-md-4 col-xl-1">
       <button
         type="button"

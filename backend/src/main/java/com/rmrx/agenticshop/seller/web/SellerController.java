@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.seller.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.web.Paging;
 import com.rmrx.agenticshop.seller.dto.SellerDtos.*;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
+@PreAuthorize("hasAuthority('SELLERS_READ')")
 @RequestMapping("/api/sellers")
 public class SellerController {
 
@@ -34,12 +36,14 @@ public class SellerController {
         return sellerService.get(idOrSlug);
     }
 
-    /** Fee agreements over time (finance data; will be restricted to the seller and FINANCE later). */
+    /** Fee agreements over time (finance data: the seller itself, FINANCE and ADMIN). */
+    @PreAuthorize("hasAuthority('SELLER_FINANCE_READ')")
     @GetMapping("/{id}/contracts")
     public List<ContractDto> contracts(@PathVariable Long id) {
         return sellerService.contracts(id);
     }
 
+    @PreAuthorize("hasAuthority('SELLER_FINANCE_READ')")
     @GetMapping("/{id}/payouts")
     public PageResponse<PayoutDto> payouts(@PathVariable Long id,
                                            @RequestParam(defaultValue = "0") int page,

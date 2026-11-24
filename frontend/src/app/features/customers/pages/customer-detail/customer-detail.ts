@@ -2,6 +2,8 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
+import { AuthStore } from '../../../../core/auth/auth.store';
+import { Permission } from '../../../../core/auth/auth.models';
 import { Breadcrumbs, Crumb } from '../../../../shared/ui/breadcrumbs/breadcrumbs';
 import { EntityHeader } from '../../../../shared/ui/entity-header/entity-header';
 import { LoadState } from '../../../../shared/ui/load-state/load-state';
@@ -51,21 +53,39 @@ import { CustomerDetailStore } from '../../state/customer-detail.store';
 })
 export class CustomerDetailPage {
   protected readonly store = inject(CustomerDetailStore);
+  private readonly auth = inject(AuthStore);
 
   protected readonly crumbs = computed<Crumb[]>(() => [
     { label: 'Customers', link: '/customers' },
     { label: this.store.customer()?.fullName ?? '' },
   ]);
 
+  /** Tabs the user may open (the routes have the same permissions). */
   protected readonly tabs = computed<TabLink[]>(() => {
     const customer = this.store.customer();
-    return [
+    const tabs: (TabLink & { permission?: Permission })[] = [
       { label: 'Overview', path: '' },
       { label: 'Addresses', path: 'addresses', count: customer?.addresses.length },
-      { label: 'Orders', path: 'orders', count: customer?.stats.orderCount },
-      { label: 'Tickets', path: 'tickets', count: customer?.stats.ticketCount },
+      {
+        label: 'Orders',
+        path: 'orders',
+        count: customer?.stats.orderCount,
+        permission: 'ORDERS_READ',
+      },
+      {
+        label: 'Tickets',
+        path: 'tickets',
+        count: customer?.stats.ticketCount,
+        permission: 'TICKETS_READ',
+      },
       { label: 'Reviews', path: 'reviews' },
-      { label: 'Flags', path: 'flags', count: customer?.stats.activeFlagCount },
+      {
+        label: 'Flags',
+        path: 'flags',
+        count: customer?.stats.activeFlagCount,
+        permission: 'FLAGS_READ',
+      },
     ];
+    return tabs.filter((tab) => !tab.permission || this.auth.can(tab.permission));
   });
 }

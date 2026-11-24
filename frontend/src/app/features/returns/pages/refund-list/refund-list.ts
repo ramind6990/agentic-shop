@@ -7,6 +7,7 @@ import { FilterControl } from '../../../../shared/ui/filter-control/filter-contr
 import { ListLayout } from '../../../../shared/ui/list-layout/list-layout';
 import { Refund } from '../../models/return.model';
 import { RefundListStore } from '../../state/refund-list.store';
+import { AuthStore } from '../../../../core/auth/auth.store';
 
 /** Refunds (GET /api/refunds): from returns, lost parcels and late-delivery goodwill credits. */
 @Component({
@@ -18,6 +19,7 @@ import { RefundListStore } from '../../state/refund-list.store';
   templateUrl: './refund-list.html',
 })
 export class RefundList {
+  protected readonly auth = inject(AuthStore);
   protected readonly store = inject(RefundListStore);
 
   protected readonly rowId = (r: Refund) => r.id;

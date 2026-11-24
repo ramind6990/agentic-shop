@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.order.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.web.Paging;
 import com.rmrx.agenticshop.order.dto.OrderDtos.OrderDetail;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
 
 @RestController
+@PreAuthorize("hasAuthority('ORDERS_READ')")
 @RequestMapping("/api/orders")
 public class OrderController {
 

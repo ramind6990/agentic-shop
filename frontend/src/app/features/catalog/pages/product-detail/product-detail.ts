@@ -12,6 +12,7 @@ import { ProductAttributes } from '../../components/product-attributes/product-a
 import { ProductGallery } from '../../components/product-gallery/product-gallery';
 import { ProductReviews } from '../../components/product-reviews/product-reviews';
 import { ProductDetailStore } from '../../state/product-detail.store';
+import { AccessLink } from '../../../../shared/ui/access-link/access-link';
 
 /** Product detail: gallery, buy-box style summary, description, specifications and reviews. */
 @Component({
@@ -29,6 +30,7 @@ import { ProductDetailStore } from '../../state/product-detail.store';
     ProductAttributes,
     ProductGallery,
     ProductReviews,
+    AccessLink,
   ],
   providers: [ProductDetailStore],
   changeDetection: ChangeDetectionStrategy.OnPush,

@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.catalog.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.catalog.dto.ProductDtos.*;
 import com.rmrx.agenticshop.catalog.service.ProductSearchCriteriaParser;
 import com.rmrx.agenticshop.catalog.service.ProductService;
@@ -13,6 +14,7 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
+@PreAuthorize("hasAuthority('CATALOG_READ')")
 @RequestMapping("/api/products")
 public class ProductController {
 

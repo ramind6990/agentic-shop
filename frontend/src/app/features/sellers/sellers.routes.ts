@@ -1,5 +1,7 @@
 import { Routes } from '@angular/router';
 
+import { permissionGuard } from '../../core/auth/auth.guards';
+
 export const SELLER_ROUTES: Routes = [
   {
     path: '',
@@ -23,20 +25,29 @@ export const SELLER_ROUTES: Routes = [
       },
       {
         path: 'orders',
-        loadComponent: () => import('./pages/seller-orders/seller-orders').then((m) => m.SellerOrders),
+        canMatch: [permissionGuard],
+        data: { permission: 'ORDERS_READ' },
+        loadComponent: () =>
+          import('./pages/seller-orders/seller-orders').then((m) => m.SellerOrders),
       },
       {
         path: 'contracts',
+        canMatch: [permissionGuard],
+        data: { permission: 'SELLER_FINANCE_READ' },
         loadComponent: () =>
           import('./pages/seller-contracts/seller-contracts').then((m) => m.SellerContracts),
       },
       {
         path: 'payouts',
+        canMatch: [permissionGuard],
+        data: { permission: 'SELLER_FINANCE_READ' },
         loadComponent: () =>
           import('./pages/seller-payouts/seller-payouts').then((m) => m.SellerPayouts),
       },
       {
         path: 'flags',
+        canMatch: [permissionGuard],
+        data: { permission: 'FLAGS_READ' },
         loadComponent: () => import('./pages/seller-flags/seller-flags').then((m) => m.SellerFlags),
       },
     ],

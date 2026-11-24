@@ -8,6 +8,7 @@ import com.rmrx.agenticshop.returns.dto.ReturnDtos.ReturnDto;
 import com.rmrx.agenticshop.returns.entity.*;
 import com.rmrx.agenticshop.returns.repository.RefundRepository;
 import com.rmrx.agenticshop.returns.repository.ReturnRequestRepository;
+import com.rmrx.agenticshop.security.AccessScope;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
@@ -22,12 +23,14 @@ public class ReturnService {
     private final ReturnRequestRepository returnRepository;
     private final RefundRepository refundRepository;
     private final ReturnMapper mapper;
+    private final AccessScope scope;
 
     public ReturnService(ReturnRequestRepository returnRepository, RefundRepository refundRepository,
-                         ReturnMapper mapper) {
+                         ReturnMapper mapper, AccessScope scope) {
         this.returnRepository = returnRepository;
         this.refundRepository = refundRepository;
         this.mapper = mapper;
+        this.scope = scope;
     }
 
     public PageResponse<ReturnDto> searchReturns(ReturnStatus status, ReturnReason reason, Long sellerId,
@@ -35,16 +38,17 @@ public class ReturnService {
         Specification<ReturnRequest> spec = Specification.allOf(
                 Specs.eq("status", status),
                 Specs.eq("reason", reason),
-                Specs.eq("order.seller.id", sellerId),
-                Specs.eq("customer.id", customerId),
+                Specs.eq("order.seller.id", scope.sellerFilter(sellerId)),
+                Specs.eq("customer.id", scope.customerFilter(customerId)),
                 Specs.gte("openedAt", from),
                 Specs.lt("openedAt", to));
         return PageResponse.of(returnRepository.findAll(spec, pageable), mapper::toReturn);
     }
 
     public ReturnDto getReturn(Long id) {
-        return returnRepository.findById(id).map(mapper::toReturn)
-                .orElseThrow(() -> new NotFoundException("Return", id));
+        ReturnRequest r = returnRepository.findById(id).orElseThrow(() -> new NotFoundException("Return", id));
+        scope.requireOwned(r.getCustomer().getId(), r.getOrder().getSeller().getId(), "Return", id);
+        return mapper.toReturn(r);
     }
 
     public PageResponse<RefundDto> searchRefunds(RefundStatus status, Long orderId, Long sellerId,
@@ -52,7 +56,8 @@ public class ReturnService {
         Specification<Refund> spec = Specification.allOf(
                 Specs.eq("status", status),
                 Specs.eq("order.id", orderId),
-                Specs.eq("order.seller.id", sellerId),
+                Specs.eq("order.seller.id", scope.sellerFilter(sellerId)),
+                Specs.eq("order.customer.id", scope.customerFilter(null)),
                 Specs.gte("createdAt", from),
                 Specs.lt("createdAt", to));
         return PageResponse.of(refundRepository.findAll(spec, pageable), mapper::toRefund);

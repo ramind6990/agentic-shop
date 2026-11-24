@@ -8,6 +8,7 @@ import { ListLayout } from '../../../../shared/ui/list-layout/list-layout';
 import { enumLabel } from '../../../../shared/utils/enum-label';
 import { ReturnRequest } from '../../models/return.model';
 import { ReturnListStore } from '../../state/return-list.store';
+import { AuthStore } from '../../../../core/auth/auth.store';
 
 /** Return requests (GET /api/returns): status, reason, seller, customer and date filters. */
 @Component({
@@ -19,6 +20,7 @@ import { ReturnListStore } from '../../state/return-list.store';
   templateUrl: './return-list.html',
 })
 export class ReturnList {
+  protected readonly auth = inject(AuthStore);
   protected readonly store = inject(ReturnListStore);
 
   protected readonly rowId = (r: ReturnRequest) => r.id;

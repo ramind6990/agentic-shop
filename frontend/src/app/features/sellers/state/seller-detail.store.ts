@@ -1,5 +1,6 @@
 import { Injectable, computed, inject } from '@angular/core';
 
+import { AuthStore } from '../../../core/auth/auth.store';
 import { loadOnChange } from '../../../shared/data/load-on-change';
 import { pagedLoader } from '../../../shared/data/paged-loader';
 import { injectRouteParams } from '../../../shared/data/url-query';
@@ -11,11 +12,13 @@ import { SellerApi } from '../data-access/seller-api';
 
 /**
  * Seller page frame (/sellers/:idOrSlug). Provided by the SellerDetail page and shared with its tabs.
- * Contracts and the first payouts load with the seller: the header counts and the overview need them.
+ * Contracts and the first payouts load with the seller (the header counts and the overview need them), but only
+ * for users who may see seller finance data.
  */
 @Injectable()
 export class SellerDetailStore {
   private readonly api = inject(SellerApi);
+  private readonly auth = inject(AuthStore);
   private readonly params = injectRouteParams();
 
   readonly idOrSlug = computed(() => this.params().get('idOrSlug') ?? undefined);
@@ -29,7 +32,12 @@ export class SellerDetailStore {
   /** Numeric id once the seller has loaded (the URL may hold a slug). */
   readonly sellerId = computed(() => this.seller()?.id);
 
-  private readonly contracts$ = loadOnChange(this.sellerId, (id) => this.api.contracts(id));
+  readonly canSeeFinance = computed(() => this.auth.can('SELLER_FINANCE_READ'));
+  private readonly financeSellerId = computed(() =>
+    this.canSeeFinance() ? this.sellerId() : undefined,
+  );
+
+  private readonly contracts$ = loadOnChange(this.financeSellerId, (id) => this.api.contracts(id));
   readonly contracts = computed(() => this.contracts$.value() ?? []);
   readonly contractsLoading = this.contracts$.loading;
   readonly contractsError = this.contracts$.error;
@@ -38,7 +46,7 @@ export class SellerDetailStore {
     () => this.contracts().find((c) => c.effectiveTo === null) ?? this.contracts()[0],
   );
 
-  private readonly recentPayouts$ = loadOnChange(this.sellerId, (id) =>
+  private readonly recentPayouts$ = loadOnChange(this.financeSellerId, (id) =>
     this.api.payouts(id, 0, 10),
   );
   readonly payoutCount = computed(() => this.recentPayouts$.value()?.totalElements);

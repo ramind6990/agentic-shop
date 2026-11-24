@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.returns.web;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.common.dto.PageResponse;
 import com.rmrx.agenticshop.common.web.Paging;
 import com.rmrx.agenticshop.returns.dto.ReturnDtos.RefundDto;
@@ -23,6 +24,7 @@ public class ReturnController {
         this.returnService = returnService;
     }
 
+    @PreAuthorize("hasAuthority('RETURNS_READ')")
     @GetMapping("/returns")
     public PageResponse<ReturnDto> returns(@RequestParam(required = false) ReturnStatus status,
                                            @RequestParam(required = false) ReturnReason reason,
@@ -36,11 +38,13 @@ public class ReturnController {
                 Paging.of(page, size, Sort.by(Sort.Order.desc("openedAt"), Sort.Order.desc("id"))));
     }
 
+    @PreAuthorize("hasAuthority('RETURNS_READ')")
     @GetMapping("/returns/{id}")
     public ReturnDto getReturn(@PathVariable Long id) {
         return returnService.getReturn(id);
     }
 
+    @PreAuthorize("hasAuthority('REFUNDS_READ')")
     @GetMapping("/refunds")
     public PageResponse<RefundDto> refunds(@RequestParam(required = false) RefundStatus status,
                                            @RequestParam(required = false) Long orderId,

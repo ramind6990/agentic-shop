@@ -28,17 +28,19 @@
         placeholder="99504"
       />
     </div>
-    <div class="col-6 col-md-4 col-xl-2">
-      <label for="ref-seller" class="form-label small mb-1">Seller ID</label>
-      <input
-        id="ref-seller"
-        appFilter="sellerId"
-        type="number"
-        min="1"
-        class="form-control form-control-sm"
-        placeholder="171"
-      />
-    </div>
+    @if (!auth.scopedToSeller()) {
+      <div class="col-6 col-md-4 col-xl-2">
+        <label for="ref-seller" class="form-label small mb-1">Seller ID</label>
+        <input
+          id="ref-seller"
+          appFilter="sellerId"
+          type="number"
+          min="1"
+          class="form-control form-control-sm"
+          placeholder="171"
+        />
+      </div>
+    }
     <div class="col-6 col-md-4 col-xl-2">
       <label for="ref-from" class="form-label small mb-1">Created from</label>
       <input id="ref-from" appFilter="from" type="date" class="form-control form-control-sm" />
