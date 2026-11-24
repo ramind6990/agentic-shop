@@ -32,6 +32,36 @@ app:
     secret: ${JWT_SECRET:agenticshop-dev-only-secret-change-me-0123456789}
     ttl: ${JWT_TTL:8h}
 
+  ai:
+    # Off by default: no model beans, the rest of the app runs as before.
+    enabled: ${AI_ENABLED:false}
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      log-requests: false
+      log-responses: false
+    chat:
+      model: ${AI_CHAT_MODEL:gpt-5-mini}
+      summary-model: ${AI_SUMMARY_MODEL:gpt-5-nano}
+      max-output-tokens: 4000
+      timeout: 60s
+    embedding:
+      model: ${AI_EMBEDDING_MODEL:text-embedding-3-small}
+      dimensions: 1536
+      timeout: 30s
+    agent:
+      step-budget: 8
+      history-window: 12
+      turn-timeout: 120s
+    mock:
+      default-scenario: happy
+      scenario-header-enabled: false
+    failure-injection:
+      error-rate: 0
+      timeout-rate: 0
+      malformed-rate: 0
+      extra-latency: 0ms
+
 server:
   port: ${PORT:8080}
   error:
