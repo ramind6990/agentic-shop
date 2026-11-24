@@ -11,6 +11,7 @@ import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
 import com.rmrx.agenticshop.ai.contract.tool.TicketMessageView;
 import com.rmrx.agenticshop.ai.tools.port.PortException;
 import com.rmrx.agenticshop.returns.entity.RefundStatus;
+import com.rmrx.agenticshop.returns.entity.ReturnStatus;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -70,6 +71,21 @@ abstract class MockSupport {
         };
         if (!visible) throw PortException.notFound("ticket", ticketId);
         return t;
+    }
+
+    /** The item's return that blocks a new one (any not REJECTED), or null. */
+    static MockWorld.Return activeReturn(MockWorld world, Long itemId) {
+        return world.returns.values().stream()
+                .filter(r -> r.itemId.equals(itemId) && r.status != ReturnStatus.REJECTED)
+                .findFirst().orElse(null);
+    }
+
+    /** "Order AS-2026-50001: 1x Brewline ..., 1x ..." for confirmation prompts. */
+    static String orderTarget(MockWorld.Order o) {
+        String items = o.items.stream().limit(3).map(i -> i.qty + "x " + i.title)
+                .collect(java.util.stream.Collectors.joining(", "));
+        if (o.items.size() > 3) items += ", +" + (o.items.size() - 3) + " more";
+        return "Order " + o.number + ": " + items + " (total " + o.total() + " " + o.currency + ")";
     }
 
     static BigDecimal refundedSoFar(MockWorld world, Long orderId) {

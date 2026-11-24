@@ -7,10 +7,13 @@ import com.rmrx.agenticshop.ai.tools.port.RefundPort;
 import com.rmrx.agenticshop.ai.tools.port.ReturnPort;
 import com.rmrx.agenticshop.ai.tools.port.ShipmentPort;
 import com.rmrx.agenticshop.ai.tools.port.SupportPort;
+import com.rmrx.agenticshop.support.repository.TicketRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * The mock port beans, active unless the {@code real-tools} profile is on; real adapters then provide the same
@@ -30,9 +33,16 @@ public class MockToolsConfig {
                 props.mock().defaultScenario(), injection.active() ? injection : "off");
     }
 
+    /**
+     * Worlds keyed by subject customer; a staff call in a ticket context finds that ticket's real customer through
+     * the support repository (read-only, once per ticket).
+     */
     @Bean
-    MockWorlds mockWorlds(AiProperties props) {
-        return new MockWorlds(props.mock().defaultScenario());
+    MockWorlds mockWorlds(AiProperties props, TicketRepository tickets, PlatformTransactionManager txManager) {
+        TransactionTemplate readOnly = new TransactionTemplate(txManager);
+        readOnly.setReadOnly(true);
+        return new MockWorlds(props.mock().defaultScenario(), ticketId -> readOnly.execute(
+                status -> tickets.findById(ticketId).map(t -> t.getCustomer().getId()).orElse(null)));
     }
 
     @Bean

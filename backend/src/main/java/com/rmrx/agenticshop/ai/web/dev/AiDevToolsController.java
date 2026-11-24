@@ -88,7 +88,8 @@ public class AiDevToolsController {
     public record ScenarioRequest(@NotBlank String scenario) {
     }
 
-    public record ScenarioResponse(Long userId, String scenario) {
+    /** customerId is the subject customer whose world was changed. */
+    public record ScenarioResponse(Long customerId, String scenario) {
     }
 
     /** Arguments of a direct write; each op uses the fields it needs. */
@@ -133,14 +134,15 @@ public class AiDevToolsController {
                     + MockScenarios.ALL);
         }
         mockWorlds().setScenario(ctx, request.scenario());
-        return new ScenarioResponse(ctx.userId(), request.scenario());
+        return new ScenarioResponse(mockWorlds().subjectCustomer(ctx), request.scenario());
     }
 
+    /** Drops the caller's world (with ticketId, a staff caller's world for that ticket's customer). */
     @PostMapping("/mock/reset")
-    public ScenarioResponse reset() {
-        AgentContext ctx = context(null);
-        mockWorlds().reset(ctx.userId());
-        return new ScenarioResponse(ctx.userId(), mockWorlds().scenarioOf(ctx.userId()));
+    public ScenarioResponse reset(@RequestParam(required = false) Long ticketId) {
+        AgentContext ctx = context(ticketId);
+        mockWorlds().reset(ctx);
+        return new ScenarioResponse(mockWorlds().subjectCustomer(ctx), mockWorlds().scenarioOf(ctx));
     }
 
     /** Calls a write port directly: cancel, createReturn, refund, escalate or note. */
@@ -186,7 +188,7 @@ public class AiDevToolsController {
 
     private String scenarioOf(AgentContext ctx) {
         MockWorlds w = worlds.getIfAvailable();
-        return w == null ? null : w.scenarioOf(ctx.userId());
+        return w == null ? null : w.scenarioOf(ctx);
     }
 
     private MockWorlds mockWorlds() {

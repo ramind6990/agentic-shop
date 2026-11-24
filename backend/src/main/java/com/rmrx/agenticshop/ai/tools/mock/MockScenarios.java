@@ -1,6 +1,5 @@
 package com.rmrx.agenticshop.ai.tools.mock;
 
-import com.rmrx.agenticshop.ai.context.AgentContext;
 import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
 import com.rmrx.agenticshop.order.entity.Carrier;
 import com.rmrx.agenticshop.order.entity.OrderStatus;
@@ -30,8 +29,8 @@ import java.util.Set;
  * customer or seller id) and to "now" (delivered 5 days ago), which plain JSON would need a placeholder language for.
  *
  * <p>Fixed ids, the same in every world: products 7101-7116, orders 50001-50006 (50006 belongs to
- * {@link #OTHER_CUSTOMER_ID}), tickets 40001 (the caller's) and 40002 (the other customer's). For a non-customer
- * caller the orders belong to {@link #PRIMARY_CUSTOMER_ID}; for a non-seller caller "the caller's seller" is
+ * {@link #OTHER_CUSTOMER_ID}), tickets 40001 (the subject's) and 40002 (the other customer's). The orders belong
+ * to the world's subject customer (see {@link MockWorlds}); for a non-seller caller "the caller's seller" is
  * {@link #DEFAULT_SELLER_ID}.
  */
 public final class MockScenarios {
@@ -79,9 +78,9 @@ public final class MockScenarios {
         return scenario != null && ALL.contains(scenario);
     }
 
-    public static MockWorld build(String scenario, AgentContext ctx) {
+    public static MockWorld build(String scenario, MockWorlds.WorldKey key) {
         if (!exists(scenario)) throw new IllegalArgumentException("Unknown mock scenario: " + scenario);
-        Builder b = new Builder(new MockWorld(scenario, ctx.userId()), ctx);
+        Builder b = new Builder(new MockWorld(scenario, key.customerId()), key);
         b.catalog();
         switch (scenario) {
             case EMPTY -> b.ticket(false);
@@ -106,10 +105,10 @@ public final class MockScenarios {
         long refundSeq = 85001;
         long messageSeq = 45001;
 
-        Builder(MockWorld world, AgentContext ctx) {
+        Builder(MockWorld world, MockWorlds.WorldKey key) {
             this.world = world;
-            this.customerId = ctx.isCustomer() ? ctx.userId() : PRIMARY_CUSTOMER_ID;
-            this.callerSeller = ctx.isSeller() && ctx.sellerId() != null ? ctx.sellerId() : DEFAULT_SELLER_ID;
+            this.customerId = key.customerId();
+            this.callerSeller = key.sellerId();
         }
 
         Instant ago(Duration d) {

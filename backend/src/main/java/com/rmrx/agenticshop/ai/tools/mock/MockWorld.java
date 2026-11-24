@@ -17,6 +17,7 @@ import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,18 +27,31 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Supplier;
 
 /**
- * One caller's in-memory backend: orders, items, shipments, products, returns, refunds and tickets built from a
+ * One subject customer's in-memory backend: orders, items, shipments, products, returns, refunds and tickets built from a
  * scenario. Mutable (writes really change it) and thread-safe: every read and write goes through {@link #locked}.
  * The seeded {@link #random()} drives failure injection, so runs against a fresh world are reproducible.
  */
 public final class MockWorld {
 
     private final String scenario;
-    private final Long ownerUserId;
+    private final Long customerId;
     private final ReentrantLock lock = new ReentrantLock();
     private final Random random;
-    /** Ids for rows created by writes; above every fixture id. */
-    private final AtomicLong nextId = new AtomicLong(900_001);
+
+    /** Kinds of rows writes create; each has its own id range above every fixture id, so ids never collide. */
+    enum IdKind {
+        RETURN(910_001),
+        REFUND(920_001),
+        MESSAGE(930_001);
+
+        final long first;
+
+        IdKind(long first) {
+            this.first = first;
+        }
+    }
+
+    private final Map<IdKind, AtomicLong> nextIds = new EnumMap<>(IdKind.class);
 
     final Map<Long, Product> products = new LinkedHashMap<>();
     final Map<Long, Order> orders = new LinkedHashMap<>();
@@ -46,18 +60,20 @@ public final class MockWorld {
     final Map<Long, Refund> refunds = new LinkedHashMap<>();
     final Map<Long, Ticket> tickets = new LinkedHashMap<>();
 
-    MockWorld(String scenario, Long ownerUserId) {
+    MockWorld(String scenario, Long customerId) {
         this.scenario = scenario;
-        this.ownerUserId = ownerUserId;
-        this.random = new Random(31L * scenario.hashCode() + ownerUserId);
+        this.customerId = customerId;
+        this.random = new Random(31L * scenario.hashCode() + customerId);
+        for (IdKind kind : IdKind.values()) nextIds.put(kind, new AtomicLong(kind.first));
     }
 
     public String scenario() {
         return scenario;
     }
 
-    public Long ownerUserId() {
-        return ownerUserId;
+    /** The subject customer this world belongs to. */
+    public Long customerId() {
+        return customerId;
     }
 
     /** Seeded per world; only use it inside {@link #locked} or for injection decisions. */
@@ -79,8 +95,8 @@ public final class MockWorld {
         }
     }
 
-    long newId() {
-        return nextId.getAndIncrement();
+    long newId(IdKind kind) {
+        return nextIds.get(kind).getAndIncrement();
     }
 
     // ---- rows (package-private, mutated only under the lock) ----

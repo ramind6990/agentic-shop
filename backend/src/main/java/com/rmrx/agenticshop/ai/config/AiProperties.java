@@ -21,7 +21,8 @@ public record AiProperties(
         @DefaultValue Agent agent,
         @DefaultValue Mock mock,
         @DefaultValue FailureInjection failureInjection,
-        @DefaultValue Events events) {
+        @DefaultValue Events events,
+        @DefaultValue Actions actions) {
 
     /** OpenAI connection. The key comes from {@code OPENAI_API_KEY}; never commit it. */
     public record OpenAi(
@@ -96,5 +97,14 @@ public record AiProperties(
             @DefaultValue("5m") Duration retention,
             @DefaultValue("2000") int bufferSize,
             @DefaultValue("15s") Duration heartbeat) {
+    }
+
+    /**
+     * Chat action tokens: how long a button on a reply item stays usable, and how long a CONFIRM/DECLINE pair of a
+     * pending write stays usable.
+     */
+    public record Actions(
+            @DefaultValue("24h") Duration itemTtl,
+            @DefaultValue("15m") Duration confirmationTtl) {
     }
 }

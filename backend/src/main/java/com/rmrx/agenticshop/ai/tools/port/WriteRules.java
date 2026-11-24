@@ -5,6 +5,8 @@ import com.rmrx.agenticshop.identity.entity.Role;
 import com.rmrx.agenticshop.order.entity.OrderStatus;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -23,6 +25,29 @@ public final class WriteRules {
 
     /** Days after delivery during which an item may be returned. */
     public static final int RETURN_WINDOW_DAYS = 30;
+
+    /** Order statuses with nothing left to return. */
+    public static final Set<OrderStatus> NOT_RETURNABLE = Set.of(OrderStatus.CANCELLED, OrderStatus.REFUNDED);
+
+    /** Whole days since delivery. */
+    public static long daysSinceDelivery(Instant deliveredAt, Instant now) {
+        return Duration.between(deliveredAt, now).toDays();
+    }
+
+    /** Whether an item delivered at deliveredAt is still inside the return window at now. */
+    public static boolean withinReturnWindow(Instant deliveredAt, Instant now) {
+        return deliveredAt != null && daysSinceDelivery(deliveredAt, now) <= RETURN_WINDOW_DAYS;
+    }
+
+    /** Whether the role may issue refunds at all (its per-refund cap is checked by {@link #checkRefundLimit}). */
+    public static boolean mayRefund(Role role) {
+        return REFUND_LIMITS.containsKey(role);
+    }
+
+    /** The role's per-refund cap; empty when there is none beyond the refundable balance or the role may not refund. */
+    public static Optional<BigDecimal> refundLimit(Role role) {
+        return REFUND_LIMITS.getOrDefault(role, Optional.empty());
+    }
 
     /**
      * Max amount of one refund per role. Roles not listed may not refund at all (FORBIDDEN); an empty Optional means

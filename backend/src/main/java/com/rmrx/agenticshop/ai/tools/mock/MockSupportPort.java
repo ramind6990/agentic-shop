@@ -68,7 +68,7 @@ public class MockSupportPort extends MockSupport implements SupportPort {
     private static MockWorld.Message message(MockWorld world, AuthorType type, String author, String body,
                                              boolean internal) {
         MockWorld.Message m = new MockWorld.Message();
-        m.id = world.newId();
+        m.id = world.newId(MockWorld.IdKind.MESSAGE);
         m.authorType = type;
         m.author = author;
         m.body = body;

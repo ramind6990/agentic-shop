@@ -17,4 +17,7 @@ public interface RefundPort {
      * may not exceed the paid amount minus earlier refunds (INELIGIBLE).
      */
     WriteOutcome<RefundView> issueRefund(AgentContext ctx, Long orderId, BigDecimal amount, String reason);
+
+    /** Side-effect-free dry run of {@link #issueRefund}: same checks and failures; nothing changes. */
+    WritePreview checkRefund(AgentContext ctx, Long orderId, BigDecimal amount, String reason);
 }

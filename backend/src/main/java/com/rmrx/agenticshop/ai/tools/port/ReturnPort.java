@@ -20,4 +20,10 @@ public interface ReturnPort {
      */
     WriteOutcome<ReturnView> createReturn(AgentContext ctx, Long orderId, Long orderItemId, ReturnReason reason,
                                           String note);
+
+    /**
+     * Side-effect-free dry run of {@link #createReturn}: same checks and failures; on success amount is the line
+     * total (the most the return can refund) and policyReason how the item meets the return window.
+     */
+    WritePreview checkReturn(AgentContext ctx, Long orderId, Long orderItemId, ReturnReason reason, String note);
 }

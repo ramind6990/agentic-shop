@@ -68,6 +68,11 @@ app:
       retention: 5m
       buffer-size: 2000
       heartbeat: 15s
+    actions:
+      # how long a button on a reply item (view, track, cancel...) stays usable
+      item-ttl: 24h
+      # how long the CONFIRM/DECLINE pair of a pending write stays usable
+      confirmation-ttl: 15m
 
 server:
   port: ${PORT:8080}
