@@ -1,6 +1,9 @@
 package com.rmrx.agenticshop.ai.conversation;
 
+import com.rmrx.agenticshop.ai.graph.JdbcCheckpointSaver;
 import com.rmrx.agenticshop.ai.graph.ReplyWriter;
+import com.rmrx.agenticshop.ai.memory.ConversationSummarizer;
+import com.rmrx.agenticshop.ai.memory.SummaryAudience;
 import com.rmrx.agenticshop.ai.graph.SupportAgentGraph;
 import com.rmrx.agenticshop.ai.graph.TurnRuntime;
 import com.rmrx.agenticshop.ai.graph.TurnTimeoutException;
@@ -20,6 +23,9 @@ import java.util.concurrent.ExecutorService;
  * <p>On failure (exception or turn timeout) before the reply was persisted: an ERROR envelope is saved so the
  * timeline stays coherent, the run is finished FAILED and the stream gets an ERROR event (retryable). The user's
  * message was saved before the run started, so it is never lost.
+ *
+ * <p>When the run ends (either way) its checkpoints are deleted; after a successful turn the ticket's rolling summary
+ * is updated if due ({@link ConversationSummarizer}, never failing the turn).
  */
 @Slf4j
 @Component
@@ -33,9 +39,14 @@ public class TurnRunner {
     private final TraceRecorder trace;
     private final ActiveRuns activeRuns;
     private final ExecutorService executor;
+    private final JdbcCheckpointSaver checkpoints;
+    private final ConversationSummarizer summarizer;
 
     public TurnRunner(SupportAgentGraph graph, ReplyWriter replies, TraceRecorder trace, ActiveRuns activeRuns,
-                      @Qualifier("aiExecutor") ExecutorService executor) {
+                      @Qualifier("aiExecutor") ExecutorService executor, JdbcCheckpointSaver checkpoints,
+                      ConversationSummarizer summarizer) {
+        this.checkpoints = checkpoints;
+        this.summarizer = summarizer;
         this.graph = graph;
         this.replies = replies;
         this.trace = trace;
@@ -44,23 +55,44 @@ public class TurnRunner {
     }
 
     public void submit(TurnRuntime rt, ActiveRuns.Lease lease) {
+        submit(rt, lease, false);
+    }
+
+    /** Continues a run interrupted by a restart from its newest checkpoint (see {@code RunRecovery}). */
+    public void submitResume(TurnRuntime rt, ActiveRuns.Lease lease) {
+        submit(rt, lease, true);
+    }
+
+    /**
+     * The turn, then retention and the lease, then (successful turns only) the rolling summary. The summary runs
+     * after the lease is released, so the user can send the next message right after FINAL; it bills to the same
+     * run scope (purpose SUMMARY) and a concurrent fold of the same summary loses on its optimistic version.
+     */
+    private void submit(TurnRuntime rt, ActiveRuns.Lease lease, boolean resume) {
         executor.execute(() -> {
+            boolean ok = false;
             try {
-                RunScopes.run(rt.scope(), () -> runTurn(rt));
+                ok = RunScopes.get(rt.scope(), () -> runTurn(rt, resume));
             } finally {
+                // retention: a run that ended in this process is never resumed, so its checkpoints go now
+                checkpoints.deleteRun(rt.runId());
                 activeRuns.release(lease);
             }
+            if (ok) summarizer.afterTurn(rt.scope(), rt.ticketId(), SummaryAudience.of(rt.ctx()));
         });
     }
 
-    private void runTurn(TurnRuntime rt) {
+    private boolean runTurn(TurnRuntime rt, boolean resume) {
         long t0 = System.currentTimeMillis();
         try {
-            graph.run(rt);
-            log.info("Run {} (ticket {}) completed in {} ms", rt.runId(), rt.ticketId(),
-                    System.currentTimeMillis() - t0);
+            if (resume) graph.resume(rt);
+            else graph.run(rt);
+            log.info("Run {} (ticket {}) {} in {} ms", rt.runId(), rt.ticketId(),
+                    resume ? "resumed and completed" : "completed", System.currentTimeMillis() - t0);
+            return true;
         } catch (Throwable e) {
             fail(rt, e);
+            return false;
         }
     }
 

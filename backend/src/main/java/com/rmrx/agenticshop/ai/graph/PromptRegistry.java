@@ -36,6 +36,14 @@ public class PromptRegistry {
         return get(SUPPORT_AGENT, SUPPORT_AGENT_VERSION);
     }
 
+    public static final String SUMMARY = "summary";
+    public static final String SUMMARY_VERSION = "v1";
+
+    /** The current rolling-summary prompt (placeholder {@code {{maxChars}}}). */
+    public Prompt summary() {
+        return get(SUMMARY, SUMMARY_VERSION);
+    }
+
     private static Prompt load(String id) {
         ClassPathResource resource = new ClassPathResource("ai/prompts/" + id + ".md");
         if (!resource.exists()) throw new IllegalArgumentException("Unknown prompt " + id);

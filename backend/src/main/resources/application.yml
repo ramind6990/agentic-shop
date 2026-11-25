@@ -57,6 +57,13 @@ app:
       turn-timeout: 120s
       # how the final reply picks status, shown results and quick replies: llm (structured output) | deterministic
       compose-mode: ${AI_COMPOSE_MODE:llm}
+      # rolling summary: fold the oldest uncovered messages (all but the window) once more than the trigger exist
+      summary-enabled: true
+      summary-trigger: 18
+      summary-max-chars: 1200
+      # LangGraph4j checkpoints per run (ai_checkpoint); runs left RUNNING by a restart resume if young enough
+      checkpoints: true
+      resume-max-age: 10m
     mock:
       default-scenario: happy
       scenario-header-enabled: false
@@ -75,6 +82,15 @@ app:
       item-ttl: 24h
       # how long the CONFIRM/DECLINE pair of a pending write stays usable
       confirmation-ttl: 15m
+    rag:
+      # chunk sizes in chars (~4 per token); a chunk never crosses a document section
+      chunk-target-chars: 2400
+      chunk-max-chars: 3200
+      chunk-min-chars: 400
+      chunk-overlap-chars: 240
+      embedding-batch-size: 64
+      # ingestion is manual (POST /api/ai/admin/rag/reindex) unless this is on
+      reindex-on-startup: ${AI_RAG_REINDEX_ON_STARTUP:false}
 
 server:
   port: ${PORT:8080}

@@ -13,7 +13,7 @@ import java.util.Optional;
 
 /**
  * Graph state of one support agent turn. Only serializable values live here (LangGraph4j clones the state through
- * {@code LC4jStateSerializer} between nodes, and a checkpoint saver will persist it later): the chat messages sent to
+ * {@code LC4jStateSerializer} between nodes, and {@link JdbcCheckpointSaver} persists it after every node): the chat messages sent to
  * the model, the step count, the final assistant text, the budget flag and, for a turn started by a chat button, its {@link ActionEvent}. The caller's context, the turn's
  * {@code TurnResultRegistry}/{@code BoundTools}, the publisher and the draft response are per-turn objects in
  * {@link TurnRuntime}, reached with {@link #runtime(RunnableConfig)}.

@@ -27,5 +27,7 @@ public enum Permission {
     /** Agent run traces (model and tool steps). */
     AI_TRACE_READ,
     /** Chat with the support assistant: customers in their own tickets, support staff in visible tickets. */
-    AI_CHAT
+    AI_CHAT,
+    /** Reindex the policy RAG corpus and read its stats (ADMIN). */
+    AI_RAG_ADMIN
 }

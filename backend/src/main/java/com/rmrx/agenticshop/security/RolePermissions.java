@@ -34,6 +34,7 @@ public final class RolePermissions {
         PERMISSIONS.put(Role.FRAUD, EnumSet.of(CATALOG_READ, ORDERS_READ, RETURNS_READ, REFUNDS_READ,
                 CUSTOMERS_READ, SELLERS_READ, TICKETS_READ, TICKET_INTERNAL_READ, FLAGS_READ, DOCUMENTS_READ,
                 AI_USAGE_READ_OWN));
+        // ADMIN has every permission, incl. AI_RAG_ADMIN (policy reindex)
         PERMISSIONS.put(Role.ADMIN, EnumSet.allOf(Permission.class));
     }
 

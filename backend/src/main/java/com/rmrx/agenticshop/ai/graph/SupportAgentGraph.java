@@ -26,12 +26,13 @@ import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import lombok.extern.slf4j.Slf4j;
 import org.bsc.langgraph4j.CompileConfig;
 import org.bsc.langgraph4j.CompiledGraph;
+import org.bsc.langgraph4j.GraphInput;
 import org.bsc.langgraph4j.GraphStateException;
 import org.bsc.langgraph4j.RunnableConfig;
 import org.bsc.langgraph4j.StateGraph;
 import org.bsc.langgraph4j.action.AsyncNodeActionWithConfig;
 import org.bsc.langgraph4j.action.NodeActionWithConfig;
-import org.bsc.langgraph4j.langchain4j.serializer.std.LC4jStateSerializer;
+import org.bsc.langgraph4j.checkpoint.Checkpoint;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
@@ -75,6 +76,10 @@ import static org.bsc.langgraph4j.action.AsyncNodeActionWithConfig.node_async;
  * The graph is compiled once; per-turn objects travel in the run config as a {@link TurnRuntime}. Every node
  * re-binds the turn's RunScope, so model calls are billed to the run whatever thread LangGraph4j runs a node on.
  * A node failure propagates out of {@link #run}; the caller persists the error reply and fails the run.
+ *
+ * <p>With {@code app.ai.agent.checkpoints} the state is checkpointed after every node (thread = run id, see
+ * {@link JdbcCheckpointSaver}); {@link #resume} continues a run a restart interrupted, when {@link #resumeBlocker}
+ * allows it.
  */
 @Slf4j
 @Component
@@ -109,12 +114,15 @@ public class SupportAgentGraph {
     private final TraceRecorder trace;
     private final AiProperties props;
     private final JsonMapper json;
+    private final JdbcCheckpointSaver checkpoints;
     private final CompiledGraph<AgentState> graph;
 
     public SupportAgentGraph(ObjectProvider<StreamingChatModel> streamingModel, HistoryLoader history,
                              ComposeStep compose, BlockFactory blocks, ActionService actions, ReplyWriter replies,
-                             EscalationService escalations, TraceRecorder trace, AiProperties props, JsonMapper json)
+                             EscalationService escalations, TraceRecorder trace, AiProperties props, JsonMapper json,
+                             JdbcCheckpointSaver checkpoints)
             throws GraphStateException {
+        this.checkpoints = checkpoints;
         this.escalations = escalations;
         this.streamingModel = streamingModel;
         this.history = history;
@@ -129,7 +137,7 @@ public class SupportAgentGraph {
     }
 
     private CompiledGraph<AgentState> build() throws GraphStateException {
-        StateGraph<AgentState> g = new StateGraph<>(AgentState.SCHEMA, new LC4jStateSerializer<>(AgentState::new))
+        StateGraph<AgentState> g = new StateGraph<>(AgentState.SCHEMA, checkpoints.serializer())
                 .addNode(LOAD_CONTEXT, node(LOAD_CONTEXT, this::loadContext))
                 .addNode(AGENT, node(AGENT, this::agent))
                 .addNode(TOOLS, node(TOOLS, this::tools))
@@ -145,19 +153,58 @@ public class SupportAgentGraph {
                 .addEdge(PERSIST, END);
         // loadContext + up to budget agent steps + (budget-1) tool steps + compose + persist, with headroom
         int limit = props.agent().stepBudget() * 2 + 10;
-        return g.compile(CompileConfig.builder().recursionLimit(limit).build());
+        CompileConfig.Builder config = CompileConfig.builder().recursionLimit(limit);
+        // a checkpoint after every node, thread = run id (see JdbcCheckpointSaver); TurnRunner deletes them when the
+        // run ends, so only runs interrupted by a restart keep theirs
+        // releaseThread(false): the graph keeps them at END; TurnRunner deletes them after the run (any outcome)
+        if (props.agent().checkpoints()) config.checkpointSaver(checkpoints).releaseThread(false);
+        return g.compile(config.build());
     }
 
     /** Runs one turn to completion (reply persisted, FINAL emitted). Throws on failure. */
     public void run(TurnRuntime rt) {
-        RunnableConfig config = RunnableConfig.builder()
+        Map<String, Object> input = rt.actionEvent() == null ? Map.of()
+                : Map.of(AgentState.ACTION_EVENT, rt.actionEvent());
+        graph.invoke(input, config(rt));
+        if (!rt.finished()) throw new IllegalStateException("graph ended without a persisted reply");
+    }
+
+    /**
+     * Continues an interrupted run from its newest checkpoint (thread = run id) with a rebuilt {@link TurnRuntime};
+     * only call it when {@link #resumeBlocker} returned null for that checkpoint. Throws on failure.
+     */
+    public void resume(TurnRuntime rt) {
+        graph.invoke(GraphInput.resume(), config(rt));
+        if (!rt.finished()) throw new IllegalStateException("resumed graph ended without a persisted reply");
+    }
+
+    private static RunnableConfig config(TurnRuntime rt) {
+        return RunnableConfig.builder()
                 .threadId(rt.runId().toString())
                 .putMetadata(AgentState.RUNTIME, rt)
                 .build();
-        Map<String, Object> input = rt.actionEvent() == null ? Map.of()
-                : Map.of(AgentState.ACTION_EVENT, rt.actionEvent());
-        graph.invoke(input, config);
-        if (!rt.finished()) throw new IllegalStateException("graph ended without a persisted reply");
+    }
+
+    /**
+     * Why a run cannot be resumed from this checkpoint, or null if it can. Resume is safe only while the turn has
+     * produced nothing outside its graph state: the next node is {@code agent} or {@code tools} and no tool has
+     * returned yet (no tool result message in the state; the history holds none) and the turn was not started by a
+     * chat button (its {@link ActionEvent} registered results in the lost TurnResultRegistry). From there the rebuilt
+     * runtime's empty registry is exact, and re-running the requested tool calls yields the same resultIds
+     * (r1, r2, ... in call order). Later checkpoints depend on registry entries (resultIds the model saw, pending
+     * confirmations with their tokens), which are not serializable, so such runs are failed instead.
+     */
+    public static String resumeBlocker(Checkpoint checkpoint) {
+        if (checkpoint == null) return "no checkpoint";
+        String next = checkpoint.getNextNodeId();
+        if (!AGENT.equals(next) && !TOOLS.equals(next)) return "next node is " + next;
+        AgentState state = new AgentState(checkpoint.getState());
+        if (state.actionEvent().isPresent()) return "turn started by a chat button";
+        if (state.messages().stream().anyMatch(ToolExecutionResultMessage.class::isInstance)) {
+            return "tools already returned results";
+        }
+        if (state.autoEscalated().isPresent() || state.finalText().isPresent()) return "turn already decided";
+        return null;
     }
 
     /** Wraps a node: checks the deadline before it starts and binds the turn's RunScope around it. */

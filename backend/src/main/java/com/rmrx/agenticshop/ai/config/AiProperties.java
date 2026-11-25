@@ -22,7 +22,8 @@ public record AiProperties(
         @DefaultValue Mock mock,
         @DefaultValue FailureInjection failureInjection,
         @DefaultValue Events events,
-        @DefaultValue Actions actions) {
+        @DefaultValue Actions actions,
+        @DefaultValue Rag rag) {
 
     /** OpenAI connection. The key comes from {@code OPENAI_API_KEY}; never commit it. */
     public record OpenAi(
@@ -60,12 +61,36 @@ public record AiProperties(
      * time budget of one turn. composeMode picks how the final reply decides its status, shown results and
      * suggestions: {@code llm} (one structured-output call, falling back to deterministic on any failure) or
      * {@code deterministic} (rules only, no extra model call).
+     *
+     * <p>Rolling summary: once more than {@code summaryTrigger} timeline messages are not covered by the ticket's
+     * stored summary, the oldest of them (all but the last {@code historyWindow}) are folded into it with the summary
+     * model after the turn; the prompt then carries the summary plus at most {@code summaryTrigger} raw messages.
+     * {@code summaryMaxChars} bounds the stored summary.
+     *
+     * <p>Checkpoints: with {@code checkpoints=true} every graph step is saved to {@code ai_checkpoint}; a run left
+     * RUNNING by a restart is resumed on startup when its last checkpoint allows it and it is younger than
+     * {@code resumeMaxAge}, otherwise it is failed with an ERROR reply.
      */
     public record Agent(
             @DefaultValue("8") int stepBudget,
             @DefaultValue("12") int historyWindow,
             @DefaultValue("120s") Duration turnTimeout,
-            @DefaultValue("llm") ComposeMode composeMode) {
+            @DefaultValue("llm") ComposeMode composeMode,
+            @DefaultValue("true") boolean summaryEnabled,
+            @DefaultValue("18") int summaryTrigger,
+            @DefaultValue("1200") int summaryMaxChars,
+            @DefaultValue("true") boolean checkpoints,
+            @DefaultValue("10m") Duration resumeMaxAge) {
+
+        /** The most raw timeline messages a prompt carries: the window, or up to the trigger while summarizing. */
+        public int rawHistoryLimit() {
+            return summaryEnabled ? Math.max(historyWindow, effectiveSummaryTrigger()) : historyWindow;
+        }
+
+        /** The trigger, never below window + 1 (folding must leave the window raw and fold at least one message). */
+        public int effectiveSummaryTrigger() {
+            return Math.max(summaryTrigger, historyWindow + 1);
+        }
     }
 
     public enum ComposeMode {
@@ -114,5 +139,19 @@ public record AiProperties(
     public record Actions(
             @DefaultValue("24h") Duration itemTtl,
             @DefaultValue("15m") Duration confirmationTtl) {
+    }
+
+    /**
+     * Policy ingestion for RAG: chunk sizes in characters (about 4 per token: target ~600, max ~800 tokens), the
+     * overlap carried between chunks of one long section, how many chunks one embedding request carries, and whether
+     * a full reindex runs on startup (off: reindex is manual, {@code POST /api/ai/admin/rag/reindex}).
+     */
+    public record Rag(
+            @DefaultValue("2400") int chunkTargetChars,
+            @DefaultValue("3200") int chunkMaxChars,
+            @DefaultValue("400") int chunkMinChars,
+            @DefaultValue("240") int chunkOverlapChars,
+            @DefaultValue("64") int embeddingBatchSize,
+            @DefaultValue("false") boolean reindexOnStartup) {
     }
 }
