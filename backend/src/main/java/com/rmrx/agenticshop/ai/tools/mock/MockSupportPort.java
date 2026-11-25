@@ -7,9 +7,9 @@ import com.rmrx.agenticshop.ai.tools.port.Page;
 import com.rmrx.agenticshop.ai.tools.port.PortException;
 import com.rmrx.agenticshop.ai.tools.port.SupportPort;
 import com.rmrx.agenticshop.ai.tools.port.TicketView;
-import com.rmrx.agenticshop.support.entity.AuthorType;
-import com.rmrx.agenticshop.support.entity.SupportTier;
-import com.rmrx.agenticshop.support.entity.TicketStatus;
+import com.rmrx.agenticshop.app.support.entity.AuthorType;
+import com.rmrx.agenticshop.app.support.entity.SupportTier;
+import com.rmrx.agenticshop.app.support.entity.TicketStatus;
 
 import java.time.Instant;
 import java.util.List;

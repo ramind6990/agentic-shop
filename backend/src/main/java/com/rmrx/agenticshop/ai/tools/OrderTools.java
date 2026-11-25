@@ -5,7 +5,7 @@ import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
 import com.rmrx.agenticshop.ai.tools.port.OrderPort;
 import com.rmrx.agenticshop.ai.tools.port.PortException;
 import com.rmrx.agenticshop.ai.tools.port.ShipmentPort;
-import com.rmrx.agenticshop.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import tools.jackson.databind.json.JsonMapper;

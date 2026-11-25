@@ -1,8 +1,8 @@
 package com.rmrx.agenticshop.ai.tools.port;
 
 import com.rmrx.agenticshop.ai.contract.tool.ToolErrorCode;
-import com.rmrx.agenticshop.identity.entity.Role;
-import com.rmrx.agenticshop.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.identity.entity.Role;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
 
 import java.math.BigDecimal;
 import java.time.Duration;

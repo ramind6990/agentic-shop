@@ -1,16 +1,16 @@
 package com.rmrx.agenticshop.ai.tools.mock;
 
 import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
-import com.rmrx.agenticshop.order.entity.Carrier;
-import com.rmrx.agenticshop.order.entity.OrderStatus;
-import com.rmrx.agenticshop.order.entity.PaymentMethod;
-import com.rmrx.agenticshop.order.entity.ShipmentStatus;
-import com.rmrx.agenticshop.returns.entity.RefundStatus;
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
-import com.rmrx.agenticshop.returns.entity.ReturnStatus;
-import com.rmrx.agenticshop.support.entity.AuthorType;
-import com.rmrx.agenticshop.support.entity.SupportTier;
-import com.rmrx.agenticshop.support.entity.TicketStatus;
+import com.rmrx.agenticshop.app.order.entity.Carrier;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.order.entity.PaymentMethod;
+import com.rmrx.agenticshop.app.order.entity.ShipmentStatus;
+import com.rmrx.agenticshop.app.returns.entity.RefundStatus;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnStatus;
+import com.rmrx.agenticshop.app.support.entity.AuthorType;
+import com.rmrx.agenticshop.app.support.entity.SupportTier;
+import com.rmrx.agenticshop.app.support.entity.TicketStatus;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;

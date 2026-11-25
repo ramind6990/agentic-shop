@@ -1,9 +1,9 @@
 package com.rmrx.agenticshop.ai.contract.block;
 
 import com.rmrx.agenticshop.ai.contract.response.ItemAction;
-import com.rmrx.agenticshop.returns.entity.RefundStatus;
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
-import com.rmrx.agenticshop.returns.entity.ReturnStatus;
+import com.rmrx.agenticshop.app.returns.entity.RefundStatus;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;

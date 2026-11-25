@@ -7,11 +7,11 @@ import com.rmrx.agenticshop.ai.usage.entity.AiUsage;
 import com.rmrx.agenticshop.ai.usage.entity.AiUsagePurpose;
 import com.rmrx.agenticshop.ai.usage.repository.AiUsageRepository;
 import com.rmrx.agenticshop.ai.web.dto.AiUsageDtos.*;
-import com.rmrx.agenticshop.common.exception.BadRequestException;
-import com.rmrx.agenticshop.common.exception.NotFoundException;
-import com.rmrx.agenticshop.security.AccessScope;
-import com.rmrx.agenticshop.support.entity.Ticket;
-import com.rmrx.agenticshop.support.repository.TicketRepository;
+import com.rmrx.agenticshop.app.common.exception.BadRequestException;
+import com.rmrx.agenticshop.app.common.exception.NotFoundException;
+import com.rmrx.agenticshop.app.security.AccessScope;
+import com.rmrx.agenticshop.app.support.entity.Ticket;
+import com.rmrx.agenticshop.app.support.repository.TicketRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

@@ -1,6 +1,6 @@
 package com.rmrx.agenticshop.ai.trace.entity;
 
-import com.rmrx.agenticshop.common.entity.BaseEntity;
+import com.rmrx.agenticshop.app.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

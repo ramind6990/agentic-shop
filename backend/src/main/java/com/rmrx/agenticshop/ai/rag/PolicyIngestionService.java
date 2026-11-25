@@ -12,7 +12,7 @@ import com.rmrx.agenticshop.ai.rag.RagDtos.VersionError;
 import com.rmrx.agenticshop.ai.usage.RunScope;
 import com.rmrx.agenticshop.ai.usage.RunScopes;
 import com.rmrx.agenticshop.ai.usage.entity.AiUsagePurpose;
-import com.rmrx.agenticshop.common.exception.NotFoundException;
+import com.rmrx.agenticshop.app.common.exception.NotFoundException;
 import dev.langchain4j.data.embedding.Embedding;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.model.embedding.EmbeddingModel;

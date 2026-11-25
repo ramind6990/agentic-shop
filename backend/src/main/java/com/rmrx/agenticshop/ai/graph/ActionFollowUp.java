@@ -8,7 +8,7 @@ import com.rmrx.agenticshop.ai.tools.CatalogTools;
 import com.rmrx.agenticshop.ai.tools.OrderTools;
 import com.rmrx.agenticshop.ai.tools.TurnResultRegistry;
 import com.rmrx.agenticshop.ai.tools.WriteTools;
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 

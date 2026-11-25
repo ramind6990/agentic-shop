@@ -1,6 +1,6 @@
 package com.rmrx.agenticshop.ai.contract.tool;
 
-import com.rmrx.agenticshop.support.entity.AuthorType;
+import com.rmrx.agenticshop.app.support.entity.AuthorType;
 
 import java.time.Instant;
 

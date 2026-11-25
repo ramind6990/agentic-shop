@@ -1,6 +1,6 @@
 package com.rmrx.agenticshop.ai.contract.tool;
 
-import com.rmrx.agenticshop.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;

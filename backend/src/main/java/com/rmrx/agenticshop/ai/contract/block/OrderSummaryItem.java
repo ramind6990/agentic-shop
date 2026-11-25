@@ -1,7 +1,7 @@
 package com.rmrx.agenticshop.ai.contract.block;
 
 import com.rmrx.agenticshop.ai.contract.response.ItemAction;
-import com.rmrx.agenticshop.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;

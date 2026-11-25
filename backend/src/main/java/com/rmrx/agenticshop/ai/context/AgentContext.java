@@ -1,7 +1,7 @@
 package com.rmrx.agenticshop.ai.context;
 
-import com.rmrx.agenticshop.identity.entity.Role;
-import com.rmrx.agenticshop.support.entity.SupportTier;
+import com.rmrx.agenticshop.app.identity.entity.Role;
+import com.rmrx.agenticshop.app.support.entity.SupportTier;
 
 /**
  * Who an agent turn runs for, captured from the JWT on the request thread and passed explicitly to graph nodes and

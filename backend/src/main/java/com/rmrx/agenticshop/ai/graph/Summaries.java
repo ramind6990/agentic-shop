@@ -157,12 +157,27 @@ public final class Summaries {
     }
 
     private static String policySources(PolicyAnswerBlock p, List<Citation> citations) {
-        List<String> sources = p.citationIndexes().stream()
+        // grouped per document version: "Return & Refund Policy v3 (Return window, Refunds, +1 more)"
+        java.util.Map<String, List<String>> byDoc = new java.util.LinkedHashMap<>();
+        p.citationIndexes().stream()
                 .filter(i -> i != null && i >= 0 && i < citations.size())
                 .map(citations::get)
-                .map(c -> source(c.documentTitle(), c.versionLabel(), c.sectionHeading()))
-                .distinct().toList();
-        return sources.isEmpty() ? "" : " — " + list(sources, s -> s);
+                .forEach(c -> {
+                    List<String> sections = byDoc.computeIfAbsent(c.documentTitle() + " " + c.versionLabel(),
+                            k -> new java.util.ArrayList<>());
+                    if (c.sectionHeading() != null && !sections.contains(c.sectionHeading())) {
+                        sections.add(c.sectionHeading());
+                    }
+                });
+        if (byDoc.isEmpty()) return "";
+        return " — " + byDoc.entrySet().stream()
+                .map(e -> e.getKey() + (e.getValue().isEmpty() ? "" : " (" + sectionList(e.getValue()) + ")"))
+                .collect(Collectors.joining("; "));
+    }
+
+    private static String sectionList(List<String> sections) {
+        String head = String.join(", ", sections.subList(0, Math.min(2, sections.size())));
+        return sections.size() > 2 ? head + ", +" + (sections.size() - 2) + " more" : head;
     }
 
     private static String source(String doc, String version, String section) {

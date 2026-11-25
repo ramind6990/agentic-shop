@@ -91,6 +91,18 @@ app:
       embedding-batch-size: 64
       # ingestion is manual (POST /api/ai/admin/rag/reindex) unless this is on
       reindex-on-startup: ${AI_RAG_REINDEX_ON_STARTUP:false}
+      # retrieval (PolicyRetriever): candidates per list, RRF k, chunks returned, relevance gate, HNSW settings
+      vector-candidates: 40
+      keyword-candidates: 40
+      rrf-k: 60
+      top-k: 5
+      # supporting = IDF-weighted share of query terms in the chunk >= this, or cosine similarity >= the next
+      min-keyword-coverage: 0.5
+      min-vector-similarity: 0.5
+      hnsw-ef-search: 100
+      # relaxed_order | strict_order | off (needs pgvector 0.8+, detected at runtime)
+      hnsw-iterative-scan: relaxed_order
+      excerpt-chars: 600
 
 server:
   port: ${PORT:8080}

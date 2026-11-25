@@ -10,8 +10,8 @@ import com.rmrx.agenticshop.ai.contract.tool.ReturnView;
 import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
 import com.rmrx.agenticshop.ai.contract.tool.TicketMessageView;
 import com.rmrx.agenticshop.ai.tools.port.PortException;
-import com.rmrx.agenticshop.returns.entity.RefundStatus;
-import com.rmrx.agenticshop.returns.entity.ReturnStatus;
+import com.rmrx.agenticshop.app.returns.entity.RefundStatus;
+import com.rmrx.agenticshop.app.returns.entity.ReturnStatus;
 
 import java.math.BigDecimal;
 import java.util.List;

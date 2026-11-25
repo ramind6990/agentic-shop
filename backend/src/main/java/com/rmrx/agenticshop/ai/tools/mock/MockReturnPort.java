@@ -7,9 +7,9 @@ import com.rmrx.agenticshop.ai.tools.port.PortException;
 import com.rmrx.agenticshop.ai.tools.port.ReturnPort;
 import com.rmrx.agenticshop.ai.tools.port.WritePreview;
 import com.rmrx.agenticshop.ai.tools.port.WriteRules;
-import com.rmrx.agenticshop.order.entity.ShipmentStatus;
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
-import com.rmrx.agenticshop.returns.entity.ReturnStatus;
+import com.rmrx.agenticshop.app.order.entity.ShipmentStatus;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnStatus;
 
 import java.time.Instant;
 import java.util.Comparator;

@@ -2,10 +2,10 @@ package com.rmrx.agenticshop.ai.web.dev;
 
 import com.rmrx.agenticshop.ai.action.entity.AiAction;
 import com.rmrx.agenticshop.ai.contract.response.ActionType;
-import com.rmrx.agenticshop.support.entity.AuthorType;
-import com.rmrx.agenticshop.support.entity.MessageKind;
-import com.rmrx.agenticshop.support.entity.Ticket;
-import com.rmrx.agenticshop.support.entity.TicketMessage;
+import com.rmrx.agenticshop.app.support.entity.AuthorType;
+import com.rmrx.agenticshop.app.support.entity.MessageKind;
+import com.rmrx.agenticshop.app.support.entity.Ticket;
+import com.rmrx.agenticshop.app.support.entity.TicketMessage;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.hibernate.engine.spi.SessionFactoryImplementor;

@@ -1,6 +1,6 @@
 package com.rmrx.agenticshop.ai.action;
 
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
 
 import java.math.BigDecimal;
 

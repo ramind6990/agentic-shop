@@ -3,7 +3,7 @@ package com.rmrx.agenticshop.ai.tools.port;
 import com.rmrx.agenticshop.ai.context.AgentContext;
 import com.rmrx.agenticshop.ai.contract.tool.ReturnView;
 import com.rmrx.agenticshop.ai.contract.tool.WriteOutcome;
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
 
 import java.util.List;
 

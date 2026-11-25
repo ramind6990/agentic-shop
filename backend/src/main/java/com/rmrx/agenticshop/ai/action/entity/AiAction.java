@@ -2,7 +2,7 @@ package com.rmrx.agenticshop.ai.action.entity;
 
 import com.rmrx.agenticshop.ai.contract.response.ActionState;
 import com.rmrx.agenticshop.ai.contract.response.ActionType;
-import com.rmrx.agenticshop.common.entity.BaseEntity;
+import com.rmrx.agenticshop.app.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

@@ -4,7 +4,7 @@ import com.rmrx.agenticshop.ai.context.AgentContext;
 import com.rmrx.agenticshop.ai.contract.tool.OrderDetailView;
 import com.rmrx.agenticshop.ai.contract.tool.OrderSummaryView;
 import com.rmrx.agenticshop.ai.contract.tool.WriteOutcome;
-import com.rmrx.agenticshop.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
 
 import java.util.Collection;
 import java.util.Map;

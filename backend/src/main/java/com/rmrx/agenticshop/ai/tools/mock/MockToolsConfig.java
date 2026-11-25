@@ -7,7 +7,7 @@ import com.rmrx.agenticshop.ai.tools.port.RefundPort;
 import com.rmrx.agenticshop.ai.tools.port.ReturnPort;
 import com.rmrx.agenticshop.ai.tools.port.ShipmentPort;
 import com.rmrx.agenticshop.ai.tools.port.SupportPort;
-import com.rmrx.agenticshop.support.repository.TicketRepository;
+import com.rmrx.agenticshop.app.support.repository.TicketRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

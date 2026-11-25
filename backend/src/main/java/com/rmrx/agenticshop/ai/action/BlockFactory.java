@@ -35,7 +35,7 @@ import com.rmrx.agenticshop.ai.tools.port.OrderFacts;
 import com.rmrx.agenticshop.ai.tools.port.OrderPort;
 import com.rmrx.agenticshop.ai.tools.port.Page;
 import com.rmrx.agenticshop.ai.tools.port.PortException;
-import com.rmrx.agenticshop.order.entity.ShipmentStatus;
+import com.rmrx.agenticshop.app.order.entity.ShipmentStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;

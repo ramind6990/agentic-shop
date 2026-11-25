@@ -1,7 +1,7 @@
 package com.rmrx.agenticshop.ai.contract.tool;
 
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
-import com.rmrx.agenticshop.returns.entity.ReturnStatus;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnStatus;
 
 import java.time.Instant;
 

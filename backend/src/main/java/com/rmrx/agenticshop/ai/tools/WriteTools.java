@@ -5,7 +5,7 @@ import com.rmrx.agenticshop.ai.action.WriteParams;
 import com.rmrx.agenticshop.ai.context.AgentContext;
 import com.rmrx.agenticshop.ai.contract.response.ActionType;
 import com.rmrx.agenticshop.ai.tools.port.PortException;
-import com.rmrx.agenticshop.returns.entity.ReturnReason;
+import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import tools.jackson.databind.json.JsonMapper;

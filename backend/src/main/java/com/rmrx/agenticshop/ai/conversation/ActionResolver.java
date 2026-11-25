@@ -21,7 +21,7 @@ import com.rmrx.agenticshop.ai.graph.ActionEvent;
 import com.rmrx.agenticshop.ai.graph.ActionEvent.Result;
 import com.rmrx.agenticshop.ai.tools.ToolData;
 import com.rmrx.agenticshop.ai.tools.TurnResultRegistry;
-import com.rmrx.agenticshop.common.exception.BadRequestException;
+import com.rmrx.agenticshop.app.common.exception.BadRequestException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;

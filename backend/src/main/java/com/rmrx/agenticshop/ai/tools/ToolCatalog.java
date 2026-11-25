@@ -12,7 +12,7 @@ import com.rmrx.agenticshop.ai.tools.port.RefundPort;
 import com.rmrx.agenticshop.ai.tools.port.ReturnPort;
 import com.rmrx.agenticshop.ai.tools.port.ShipmentPort;
 import com.rmrx.agenticshop.ai.tools.port.SupportPort;
-import com.rmrx.agenticshop.identity.entity.Role;
+import com.rmrx.agenticshop.app.identity.entity.Role;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.agent.tool.ToolSpecifications;

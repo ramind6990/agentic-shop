@@ -1,8 +1,8 @@
 package com.rmrx.agenticshop.ai.conversation;
 
-import com.rmrx.agenticshop.support.entity.AuthorType;
-import com.rmrx.agenticshop.support.entity.MessageKind;
-import com.rmrx.agenticshop.support.entity.TicketStatus;
+import com.rmrx.agenticshop.app.support.entity.AuthorType;
+import com.rmrx.agenticshop.app.support.entity.MessageKind;
+import com.rmrx.agenticshop.app.support.entity.TicketStatus;
 import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;

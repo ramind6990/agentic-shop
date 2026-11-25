@@ -8,8 +8,8 @@ import com.rmrx.agenticshop.ai.contract.tool.RefundView;
 import com.rmrx.agenticshop.ai.contract.tool.ReturnView;
 import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
 import com.rmrx.agenticshop.ai.contract.tool.TicketMessageView;
-import com.rmrx.agenticshop.support.entity.SupportTier;
-import com.rmrx.agenticshop.support.entity.TicketStatus;
+import com.rmrx.agenticshop.app.support.entity.SupportTier;
+import com.rmrx.agenticshop.app.support.entity.TicketStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;

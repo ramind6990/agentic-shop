@@ -1,13 +1,13 @@
 package com.rmrx.agenticshop.ai.escalation;
 
 import com.rmrx.agenticshop.ai.context.AgentContext;
-import com.rmrx.agenticshop.common.exception.NotFoundException;
-import com.rmrx.agenticshop.support.entity.SupportTier;
-import com.rmrx.agenticshop.support.entity.Ticket;
-import com.rmrx.agenticshop.support.entity.TicketMessage;
-import com.rmrx.agenticshop.support.entity.TicketStatus;
-import com.rmrx.agenticshop.support.repository.TicketMessageRepository;
-import com.rmrx.agenticshop.support.repository.TicketRepository;
+import com.rmrx.agenticshop.app.common.exception.NotFoundException;
+import com.rmrx.agenticshop.app.support.entity.SupportTier;
+import com.rmrx.agenticshop.app.support.entity.Ticket;
+import com.rmrx.agenticshop.app.support.entity.TicketMessage;
+import com.rmrx.agenticshop.app.support.entity.TicketStatus;
+import com.rmrx.agenticshop.app.support.repository.TicketMessageRepository;
+import com.rmrx.agenticshop.app.support.repository.TicketRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;

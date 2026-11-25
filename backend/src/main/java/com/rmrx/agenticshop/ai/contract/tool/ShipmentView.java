@@ -1,7 +1,7 @@
 package com.rmrx.agenticshop.ai.contract.tool;
 
-import com.rmrx.agenticshop.order.entity.Carrier;
-import com.rmrx.agenticshop.order.entity.ShipmentStatus;
+import com.rmrx.agenticshop.app.order.entity.Carrier;
+import com.rmrx.agenticshop.app.order.entity.ShipmentStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;

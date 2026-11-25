@@ -1,7 +1,7 @@
 package com.rmrx.agenticshop.ai.contract.block;
 
-import com.rmrx.agenticshop.order.entity.PaymentMethod;
-import com.rmrx.agenticshop.returns.entity.RefundStatus;
+import com.rmrx.agenticshop.app.order.entity.PaymentMethod;
+import com.rmrx.agenticshop.app.returns.entity.RefundStatus;
 
 import java.math.BigDecimal;
 

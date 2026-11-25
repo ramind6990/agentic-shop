@@ -7,8 +7,8 @@ import com.rmrx.agenticshop.ai.tools.port.PortException;
 import com.rmrx.agenticshop.ai.tools.port.RefundPort;
 import com.rmrx.agenticshop.ai.tools.port.WritePreview;
 import com.rmrx.agenticshop.ai.tools.port.WriteRules;
-import com.rmrx.agenticshop.order.entity.OrderStatus;
-import com.rmrx.agenticshop.returns.entity.RefundStatus;
+import com.rmrx.agenticshop.app.order.entity.OrderStatus;
+import com.rmrx.agenticshop.app.returns.entity.RefundStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;

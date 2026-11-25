@@ -2,11 +2,11 @@ package com.rmrx.agenticshop.ai.graph;
 
 import com.rmrx.agenticshop.ai.contract.response.AgentResponse;
 import com.rmrx.agenticshop.ai.contract.response.ResponseStatus;
-import com.rmrx.agenticshop.common.exception.NotFoundException;
-import com.rmrx.agenticshop.support.entity.Ticket;
-import com.rmrx.agenticshop.support.entity.TicketMessage;
-import com.rmrx.agenticshop.support.repository.TicketMessageRepository;
-import com.rmrx.agenticshop.support.repository.TicketRepository;
+import com.rmrx.agenticshop.app.common.exception.NotFoundException;
+import com.rmrx.agenticshop.app.support.entity.Ticket;
+import com.rmrx.agenticshop.app.support.entity.TicketMessage;
+import com.rmrx.agenticshop.app.support.repository.TicketMessageRepository;
+import com.rmrx.agenticshop.app.support.repository.TicketRepository;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.jdbc.core.JdbcTemplate;
