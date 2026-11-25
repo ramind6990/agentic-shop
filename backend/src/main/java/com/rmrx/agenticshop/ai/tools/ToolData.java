@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai.tools;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.rmrx.agenticshop.ai.contract.block.ConfirmationRequestBlock;
 import com.rmrx.agenticshop.ai.contract.response.ActionType;
+import com.rmrx.agenticshop.ai.contract.tool.PolicyChunkView;
 import com.rmrx.agenticshop.ai.contract.tool.RefundView;
 import com.rmrx.agenticshop.ai.contract.tool.ReturnView;
 import com.rmrx.agenticshop.ai.contract.tool.ShipmentView;
@@ -12,6 +13,7 @@ import com.rmrx.agenticshop.support.entity.TicketStatus;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 /** Data shapes of tools that combine or wrap port results; lists are capped with a count and hasMore. */
@@ -80,6 +82,19 @@ public final class ToolData {
      */
     public record Escalated(Long ticketId, String ticketNumber, SupportTier tier, TicketStatus status, String reason,
                             String expectedResponse, boolean alreadyEscalated) {
+    }
+
+    /**
+     * Policy sections that support an answer, retrieved for the caller's role as in force on referenceDate (the
+     * order's placed date when orderId is set, otherwise today). The reply cites them as {@code [ref]}; the envelope's
+     * citations are built from these chunks by code.
+     */
+    public record PolicySearch(String query, LocalDate referenceDate, Long orderId, List<PolicyChunkView> chunks,
+                               int chunkCount) {
+
+        public PolicySearch {
+            chunks = chunks == null ? List.of() : List.copyOf(chunks);
+        }
     }
 
     /** The latest messages of the bound ticket, oldest first. */

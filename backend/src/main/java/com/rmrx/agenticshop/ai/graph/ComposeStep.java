@@ -99,13 +99,29 @@ public class ComposeStep {
         if (mode == ComposeMode.LLM) {
             try {
                 if (rt.remaining().compareTo(MIN_TIME_FOR_LLM) < 0) throw new IllegalStateException("too little time");
-                return enforce(llm(finalText, registry, rt), registry);
+                return withCitedPolicy(enforce(llm(finalText, registry, rt), registry), finalText, registry);
             } catch (RuntimeException e) {
                 log.warn("LLM compose failed for run {} ({}); using deterministic", rt.runId(), e.toString());
             }
         }
         return deterministic(registry);
     }
+
+    /**
+     * The text cites policy sections ({@code [1]}) but the frame left out the policy result: its latest
+     * search_policies result is shown, so every [n] has a citation (not for ESCALATED or REFUSED replies).
+     */
+    static Decision withCitedPolicy(Decision d, String finalText, TurnResultRegistry registry) {
+        if (finalText == null || !CITATION_MARK.matcher(finalText).find()) return d;
+        if (d.status() == ResponseStatus.ESCALATED || d.status() == ResponseStatus.REFUSED) return d;
+        List<String> policies = ids(registry, ToolData.PolicySearch.class);
+        if (policies.isEmpty() || d.show().stream().anyMatch(policies::contains)) return d;
+        List<String> show = new ArrayList<>(d.show());
+        show.add(policies.getLast());
+        return new Decision(d.status(), List.copyOf(show), d.suggestedReplies(), d.mode());
+    }
+
+    private static final java.util.regex.Pattern CITATION_MARK = java.util.regex.Pattern.compile("\\[\\d{1,2}]");
 
     /** Every result of the turn except superseded duplicates; ANSWERED unless a write awaits confirmation. */
     public Decision deterministic(TurnResultRegistry registry) {

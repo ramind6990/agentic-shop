@@ -12,6 +12,7 @@ import com.rmrx.agenticshop.ai.contract.block.ProductListBlock;
 import com.rmrx.agenticshop.ai.contract.block.RefundResultBlock;
 import com.rmrx.agenticshop.ai.contract.block.ReturnStatusBlock;
 import com.rmrx.agenticshop.ai.contract.block.ShipmentTrackingBlock;
+import com.rmrx.agenticshop.ai.contract.response.Citation;
 import com.rmrx.agenticshop.ai.contract.response.ItemAction;
 import com.rmrx.agenticshop.ai.contract.tool.OrderDetailView;
 import com.rmrx.agenticshop.ai.contract.tool.OrderSummaryView;
@@ -73,6 +74,9 @@ public final class Summaries {
             case ToolData.ConfirmationPending c -> "CONFIRMATION_PENDING " + c.operation() + " " + c.target()
                     + (c.amount() == null ? "" : " " + money(c.amount(), c.currency())) + " (awaiting user)";
             case ToolData.TicketHistory h -> "TICKET_HISTORY " + h.messageCount() + " messages";
+            case ToolData.PolicySearch p -> "POLICY_SEARCH as of " + p.referenceDate() + ", " + p.chunkCount()
+                    + " sections: " + list(p.chunks(), c -> "[" + c.ref() + "] " + source(c.documentTitle(),
+                    c.versionLabel(), c.sectionHeading()));
             case ToolData.ChoicePending c -> "CHOICE_PENDING to " + c.then() + ": "
                     + list(c.options(), o -> o.orderId() + " " + o.label()) + " (awaiting user)";
             case ToolData.Escalated x -> "ESCALATED ticket " + x.ticketNumber() + " " + x.tier()
@@ -106,11 +110,25 @@ public final class Summaries {
 
     /** {@code [shown r1 ORDER_LIST: …; r2 CONFIRMATION_REQUEST: …]}, or null when there are no blocks. */
     public static String ofBlocks(List<Block> blocks) {
+        return ofBlocks(blocks, List.of());
+    }
+
+    /**
+     * Like {@link #ofBlocks(List)}, with the envelope's citations so a POLICY_ANSWER names its sources (document,
+     * version, section), never the policy text: {@code r1 POLICY_ANSWER: return window — Return & Refund Policy v3
+     * (Return window)}.
+     */
+    public static String ofBlocks(List<Block> blocks, List<Citation> citations) {
         if (blocks == null || blocks.isEmpty()) return null;
-        return "[shown " + blocks.stream().map(Summaries::ofBlock).collect(Collectors.joining("; ")) + "]";
+        List<Citation> cites = citations == null ? List.of() : citations;
+        return "[shown " + blocks.stream().map(b -> ofBlock(b, cites)).collect(Collectors.joining("; ")) + "]";
     }
 
     public static String ofBlock(Block b) {
+        return ofBlock(b, List.of());
+    }
+
+    static String ofBlock(Block b, List<Citation> citations) {
         String body = switch (b) {
             case OrderListBlock o -> "ORDER_LIST: " + list(o.items(), i -> i.orderId() + " " + i.orderNumber()
                     + " " + i.status() + " " + shorten(i.firstItemTitle()));
@@ -130,12 +148,25 @@ public final class Summaries {
             case ConfirmationRequestBlock c -> "CONFIRMATION_REQUEST: " + c.title() + " — " + c.target()
                     + (c.amount() == null ? "" : " " + money(c.amount(), c.currency()))
                     + " (" + confirmationState(c.actions()) + ")";
-            case PolicyAnswerBlock p -> "POLICY_ANSWER: " + shorten(p.question());
+            case PolicyAnswerBlock p -> "POLICY_ANSWER: " + shorten(p.question()) + policySources(p, citations);
             case ChoiceRequestBlock c -> "CHOICE_REQUEST: " + shorten(c.prompt()) + " "
                     + list(c.options(), o -> o.label() + (o.action() == null ? "" : " " + o.action().state()));
             case EscalationBlock e -> "ESCALATION: " + e.ticketNumber() + " " + e.tier();
         };
         return cap(b.id() + " " + body);
+    }
+
+    private static String policySources(PolicyAnswerBlock p, List<Citation> citations) {
+        List<String> sources = p.citationIndexes().stream()
+                .filter(i -> i != null && i >= 0 && i < citations.size())
+                .map(citations::get)
+                .map(c -> source(c.documentTitle(), c.versionLabel(), c.sectionHeading()))
+                .distinct().toList();
+        return sources.isEmpty() ? "" : " — " + list(sources, s -> s);
+    }
+
+    private static String source(String doc, String version, String section) {
+        return doc + " " + version + (section == null ? "" : " (" + section + ")");
     }
 
     private static String confirmationState(List<ItemAction> actions) {

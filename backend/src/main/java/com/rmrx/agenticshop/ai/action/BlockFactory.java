@@ -11,6 +11,7 @@ import com.rmrx.agenticshop.ai.contract.block.EscalationBlock;
 import com.rmrx.agenticshop.ai.contract.block.OrderDetailBlock;
 import com.rmrx.agenticshop.ai.contract.block.OrderListBlock;
 import com.rmrx.agenticshop.ai.contract.block.OrderSummaryItem;
+import com.rmrx.agenticshop.ai.contract.block.PolicyAnswerBlock;
 import com.rmrx.agenticshop.ai.contract.block.ProductDetailBlock;
 import com.rmrx.agenticshop.ai.contract.block.ProductListBlock;
 import com.rmrx.agenticshop.ai.contract.block.ProductSummaryItem;
@@ -18,9 +19,11 @@ import com.rmrx.agenticshop.ai.contract.block.RefundResultBlock;
 import com.rmrx.agenticshop.ai.contract.block.ReturnStatusBlock;
 import com.rmrx.agenticshop.ai.contract.block.ShipmentTrackingBlock;
 import com.rmrx.agenticshop.ai.contract.response.ActionType;
+import com.rmrx.agenticshop.ai.contract.response.Citation;
 import com.rmrx.agenticshop.ai.contract.response.ItemAction;
 import com.rmrx.agenticshop.ai.contract.tool.OrderDetailView;
 import com.rmrx.agenticshop.ai.contract.tool.OrderSummaryView;
+import com.rmrx.agenticshop.ai.contract.tool.PolicyChunkView;
 import com.rmrx.agenticshop.ai.contract.tool.ProductDetailView;
 import com.rmrx.agenticshop.ai.contract.tool.ProductSummaryView;
 import com.rmrx.agenticshop.ai.contract.tool.RefundView;
@@ -65,9 +68,12 @@ import java.util.function.Supplier;
 @Component
 public class BlockFactory {
 
-    /** The blocks of a reply, the reply-level suggestions (e.g. TALK_TO_HUMAN) and the ids of all issued actions. */
+    /**
+     * The blocks of a reply, the reply-level suggestions (e.g. TALK_TO_HUMAN), the ids of all issued actions and the
+     * envelope's citations (POLICY_ANSWER blocks point into it with citationIndexes).
+     */
     public record BlockSet(List<Block> blocks, List<ItemAction> suggestions, List<Long> actionIds,
-                           List<String> skipped) {
+                           List<String> skipped, List<Citation> citations) {
     }
 
     private final OrderPort orders;
@@ -111,10 +117,11 @@ public class BlockFactory {
 
         Map<Long, OrderFacts> facts = facts(ctx, orderIdsNeedingFacts(entries));
         Batch batch = new Batch(ctx);
+        Citations citations = new Citations();
         Instant now = tokens.now();
         List<Supplier<List<Block>>> assemblers = new ArrayList<>();
         for (TurnResultRegistry.Entry e : entries) {
-            Supplier<List<Block>> a = assembler(e, registry, facts, batch, ctx, now);
+            Supplier<List<Block>> a = assembler(e, registry, facts, batch, citations, ctx, now);
             if (a == null) {
                 log.warn("Result {} of tool {} has no block form; skipped", e.resultId(), e.toolName());
                 skipped.add(e.resultId());
@@ -131,7 +138,7 @@ public class BlockFactory {
         List<Long> actionIds = new ArrayList<>(batch.actionIds());
         entries.stream().filter(e -> e.data() instanceof ToolData.ConfirmationPending)
                 .forEach(e -> actionIds.addAll(((ToolData.ConfirmationPending) e.data()).actionIds()));
-        return new BlockSet(blocks, batch.items(suggestionRefs), actionIds, skipped);
+        return new BlockSet(blocks, batch.items(suggestionRefs), actionIds, skipped, citations.list());
     }
 
     /** One order detail block with fresh buttons, e.g. the new state after a write. */
@@ -146,7 +153,8 @@ public class BlockFactory {
     // ------------------------------------------------------------------ dispatch
 
     private Supplier<List<Block>> assembler(TurnResultRegistry.Entry e, TurnResultRegistry registry,
-                                            Map<Long, OrderFacts> facts, Batch batch, AgentContext ctx, Instant now) {
+                                            Map<Long, OrderFacts> facts, Batch batch, Citations citations,
+                                            AgentContext ctx, Instant now) {
         String id = e.resultId();
         return switch (e.data()) {
             case Page<?> page when isOrderPage(e, page) -> one(orderList(id, page, facts, batch, ctx));
@@ -157,6 +165,7 @@ public class BlockFactory {
             case ToolData.ReturnStatus r -> returnStatus(id, r, registry, batch, ctx);
             case ToolData.ConfirmationPending c -> () -> List.of(c.withId(id));
             case ToolData.ChoicePending c -> one(choice(id, c, batch));
+            case ToolData.PolicySearch p -> one(policyAnswer(id, p, citations));
             case ToolData.Escalated x -> () -> List.of(new EscalationBlock(id, x.reason(), x.ticketNumber(),
                     x.tier(), x.expectedResponse()));
             default -> null;
@@ -328,6 +337,61 @@ public class BlockFactory {
             }
             return out;
         };
+    }
+
+    // ------------------------------------------------------------------ policies
+
+    /**
+     * A POLICY_ANSWER from a search_policies result: one point per retrieved section (heading, version, excerpt) and
+     * the citations, built from the chunks. Citations are added to the envelope list in block order and deduplicated
+     * by chunk id, so the first policy block's [1], [2] match the model's refs.
+     */
+    private static Supplier<PolicyAnswerBlock> policyAnswer(String id, ToolData.PolicySearch p, Citations citations) {
+        List<Integer> indexes = new ArrayList<>();
+        List<String> points = new ArrayList<>();
+        for (PolicyChunkView c : p.chunks()) {
+            indexes.add(citations.add(new Citation(c.documentId(), c.documentTitle(), c.documentType(),
+                    c.versionId(), c.versionLabel(), c.sectionId(), c.sectionHeading(), c.effectiveFrom(),
+                    c.effectiveTo(), c.chunkId(), snippet(c.excerpt(), SNIPPET_CHARS))));
+            String heading = c.sectionHeading() == null ? c.documentTitle() : c.sectionHeading();
+            points.add(heading + " (" + c.documentTitle() + " " + c.versionLabel() + "): "
+                    + snippet(c.excerpt(), POINT_CHARS));
+        }
+        List<Integer> refs = List.copyOf(indexes);
+        List<String> pts = List.copyOf(points);
+        return () -> new PolicyAnswerBlock(id, p.query(), pts, refs);
+    }
+
+    static final int SNIPPET_CHARS = 240;
+    static final int POINT_CHARS = 200;
+
+    /** Plain text (markdown emphasis removed) cut at a word boundary. */
+    static String snippet(String text, int max) {
+        if (text == null) return "";
+        String t = text.replace("**", "").replaceAll("\\s+", " ").strip();
+        if (t.length() <= max) return t;
+        int cut = t.lastIndexOf(' ', max - 1);
+        if (cut < max / 2) cut = max - 1;
+        return t.substring(0, cut).stripTrailing() + "…";
+    }
+
+    /** The envelope's citations of one reply, one per chunk. */
+    private static final class Citations {
+
+        private final List<Citation> list = new ArrayList<>();
+        private final Map<Long, Integer> byChunk = new java.util.HashMap<>();
+
+        int add(Citation c) {
+            Integer existing = c.chunkId() == null ? null : byChunk.get(c.chunkId());
+            if (existing != null) return existing;
+            list.add(c);
+            if (c.chunkId() != null) byChunk.put(c.chunkId(), list.size() - 1);
+            return list.size() - 1;
+        }
+
+        List<Citation> list() {
+            return List.copyOf(list);
+        }
     }
 
     // ------------------------------------------------------------------ clarification

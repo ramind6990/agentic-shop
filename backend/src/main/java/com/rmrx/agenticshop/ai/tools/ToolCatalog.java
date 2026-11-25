@@ -2,7 +2,9 @@ package com.rmrx.agenticshop.ai.tools;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.rmrx.agenticshop.ai.action.WriteGateway;
+import com.rmrx.agenticshop.ai.config.AiProperties;
 import com.rmrx.agenticshop.ai.context.AgentContext;
+import com.rmrx.agenticshop.ai.rag.PolicyRetriever;
 import com.rmrx.agenticshop.ai.escalation.EscalationService;
 import com.rmrx.agenticshop.ai.tools.port.CatalogPort;
 import com.rmrx.agenticshop.ai.tools.port.OrderPort;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.lang.reflect.Method;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -32,6 +35,7 @@ import static com.rmrx.agenticshop.ai.tools.OrderTools.FIND_CUSTOMER_ORDERS;
 import static com.rmrx.agenticshop.ai.tools.OrderTools.GET_MY_ORDERS;
 import static com.rmrx.agenticshop.ai.tools.OrderTools.GET_ORDER;
 import static com.rmrx.agenticshop.ai.tools.OrderTools.TRACK_SHIPMENT;
+import static com.rmrx.agenticshop.ai.tools.PolicyTools.SEARCH_POLICIES;
 import static com.rmrx.agenticshop.ai.tools.ReturnTools.GET_RETURN_STATUS;
 import static com.rmrx.agenticshop.ai.tools.OrderTools.ASK_USER_TO_CHOOSE_ORDER;
 import static com.rmrx.agenticshop.ai.tools.SupportTools.ESCALATE_TO_HUMAN;
@@ -50,19 +54,19 @@ public class ToolCatalog {
 
     private static final Set<String> STAFF = Set.of(FIND_CUSTOMER_ORDERS, GET_ORDER, TRACK_SHIPMENT,
             SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION,
-            REQUEST_RETURN, REQUEST_REFUND, ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN);
+            REQUEST_RETURN, REQUEST_REFUND, ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN, SEARCH_POLICIES);
 
     /** Which tools each role may use. */
     static final Map<Role, Set<String>> ALLOWED = new EnumMap<>(Map.of(
             Role.CUSTOMER, Set.of(GET_MY_ORDERS, GET_ORDER, TRACK_SHIPMENT, SEARCH_PRODUCTS, GET_PRODUCT,
                     GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION, REQUEST_RETURN,
-                    ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN),
-            Role.SELLER, Set.of(GET_ORDER, SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS),
+                    ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN, SEARCH_POLICIES),
+            Role.SELLER, Set.of(GET_ORDER, SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS, SEARCH_POLICIES),
             Role.SUPPORT_T1, STAFF,
             Role.SUPPORT_T2, STAFF,
             Role.ADMIN, STAFF,
-            Role.FINANCE, Set.of(GET_ORDER, GET_RETURN_STATUS),
-            Role.FRAUD, Set.of(GET_ORDER, GET_RETURN_STATUS)));
+            Role.FINANCE, Set.of(GET_ORDER, GET_RETURN_STATUS, SEARCH_POLICIES),
+            Role.FRAUD, Set.of(GET_ORDER, GET_RETURN_STATUS, SEARCH_POLICIES)));
 
     private final OrderPort orders;
     private final ShipmentPort shipments;
@@ -72,12 +76,17 @@ public class ToolCatalog {
     private final SupportPort support;
     private final WriteGateway writes;
     private final EscalationService escalations;
+    private final PolicyRetriever policies;
+    private final int policyExcerptChars;
+    private final Clock clock = Clock.systemUTC();
     /** Tool results leave out null fields to stay compact for the model. */
     private final JsonMapper json;
 
     public ToolCatalog(OrderPort orders, ShipmentPort shipments, CatalogPort catalog, ReturnPort returns,
                        RefundPort refunds, SupportPort support, WriteGateway writes, EscalationService escalations,
-                       JsonMapper json) {
+                       PolicyRetriever policies, AiProperties props, JsonMapper json) {
+        this.policies = policies;
+        this.policyExcerptChars = props.rag().excerptChars();
         this.escalations = escalations;
         this.orders = orders;
         this.shipments = shipments;
@@ -103,7 +112,8 @@ public class ToolCatalog {
                 new CatalogTools(ctx, registry, json, catalog),
                 new ReturnTools(ctx, registry, json, returns, refunds),
                 new SupportTools(ctx, registry, json, support, escalations),
-                new WriteTools(ctx, registry, json, writes));
+                new WriteTools(ctx, registry, json, writes),
+                new PolicyTools(ctx, registry, json, orders, policies, policyExcerptChars, clock));
 
         Map<String, BoundTools.Bound> bound = new LinkedHashMap<>();
         List<Object> instances = new ArrayList<>();

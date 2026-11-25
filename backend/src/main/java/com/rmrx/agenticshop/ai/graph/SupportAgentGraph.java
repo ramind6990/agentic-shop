@@ -452,7 +452,7 @@ public class SupportAgentGraph {
         BlockFactory.BlockSet set = blocks.build(registry, decision.show(), rt.ctx(),
                 status != ResponseStatus.ESCALATED);
         AgentResponse response = new AgentResponse(AgentResponse.CURRENT_SCHEMA_VERSION, status, text,
-                set.blocks(), List.of(), decision.suggestedReplies(), set.suggestions(), rt.runId(), null,
+                set.blocks(), set.citations(), decision.suggestedReplies(), set.suggestions(), rt.runId(), null,
                 Instant.now());
         rt.composed(response, set.actionIds());
         log.info("Run {} composed: mode={} status={} show={} blocks={}", rt.runId(), decision.mode(), status,

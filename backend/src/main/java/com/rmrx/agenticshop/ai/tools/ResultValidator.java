@@ -93,6 +93,11 @@ final class ResultValidator {
                 check(r.refunds());
             }
             case ToolData.TicketHistory h -> check(h.messages());
+            case ToolData.PolicySearch p -> p.chunks().forEach(c -> {
+                require(c.chunkId(), "policy.chunkId");
+                require(c.documentTitle(), "policy.documentTitle");
+                require(c.versionLabel(), "policy.versionLabel");
+            });
             case ToolData.ChoicePending c -> {
                 if (c.options().size() < 2) throw new MalformedResultException("choice needs 2+ options");
                 c.options().forEach(o -> require(o.orderId(), "option.orderId"));

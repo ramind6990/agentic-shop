@@ -183,7 +183,7 @@ public class HistoryLoader {
         if (m.getPayload() == null) return body;
         try {
             AgentResponse r = json.treeToValue(m.getPayload(), AgentResponse.class);
-            String shown = Summaries.ofBlocks(r.blocks());
+            String shown = Summaries.ofBlocks(r.blocks(), r.citations());
             return shown == null ? body : body + "\n" + shown;
         } catch (RuntimeException e) {
             log.warn("Envelope {} payload unreadable for history: {}", m.getId(), e.getMessage());

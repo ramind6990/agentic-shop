@@ -83,7 +83,8 @@ public class AiDevActionsController {
     }
 
     public record BlocksResponse(Long ticketId, List<CallResult> calls, List<Block> blocks,
-                                 List<ItemAction> suggestions, List<Long> actionIds, List<String> skipped) {
+                                 List<ItemAction> suggestions, List<Long> actionIds, List<String> skipped,
+                                 List<com.rmrx.agenticshop.ai.contract.response.Citation> citations) {
     }
 
     public record TokensRequest(List<String> tokens) {
@@ -105,7 +106,7 @@ public class AiDevActionsController {
                 ? blocks.buildAll(registry, ctx)
                 : blocks.build(registry, showIds(req.show()), ctx);
         return new BlocksResponse(ctx.ticketId(), results, set.blocks(), set.suggestions(), set.actionIds(),
-                set.skipped());
+                set.skipped(), set.citations());
     }
 
     /** Runs one propose tool as the model would; the confirmation card comes back as a block. */

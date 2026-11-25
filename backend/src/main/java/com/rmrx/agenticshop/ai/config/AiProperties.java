@@ -145,6 +145,16 @@ public record AiProperties(
      * Policy ingestion for RAG: chunk sizes in characters (about 4 per token: target ~600, max ~800 tokens), the
      * overlap carried between chunks of one long section, how many chunks one embedding request carries, and whether
      * a full reindex runs on startup (off: reindex is manual, {@code POST /api/ai/admin/rag/reindex}).
+     *
+     * <p>Retrieval ({@code ai.rag.PolicyRetriever}): the vector and keyword searches each take their best
+     * {@code vectorCandidates}/{@code keywordCandidates} chunks (ACL and time filtered inside the scans), fused with
+     * Reciprocal Rank Fusion ({@code 1/(rrfK + rank)} per list). A fused chunk counts as supporting only when it
+     * contains at least {@code minKeywordCoverage} of the query's terms or its cosine similarity to the query is at
+     * least {@code minVectorSimilarity}; nothing supporting means "no supporting policy". At most {@code topK}
+     * chunks are returned. {@code hnswEfSearch} is the HNSW candidate list size; {@code hnswIterativeScan}
+     * ({@code relaxed_order}, {@code strict_order} or {@code off}) lets pgvector 0.8+ keep scanning the graph when the
+     * ACL/time filter rejects most candidates (ignored on older pgvector). {@code excerptChars} caps the chunk text a
+     * tool result carries.
      */
     public record Rag(
             @DefaultValue("2400") int chunkTargetChars,
@@ -152,6 +162,15 @@ public record AiProperties(
             @DefaultValue("400") int chunkMinChars,
             @DefaultValue("240") int chunkOverlapChars,
             @DefaultValue("64") int embeddingBatchSize,
-            @DefaultValue("false") boolean reindexOnStartup) {
+            @DefaultValue("false") boolean reindexOnStartup,
+            @DefaultValue("40") int vectorCandidates,
+            @DefaultValue("40") int keywordCandidates,
+            @DefaultValue("60") int rrfK,
+            @DefaultValue("5") int topK,
+            @DefaultValue("0.5") double minKeywordCoverage,
+            @DefaultValue("0.5") double minVectorSimilarity,
+            @DefaultValue("100") int hnswEfSearch,
+            @DefaultValue("relaxed_order") String hnswIterativeScan,
+            @DefaultValue("600") int excerptChars) {
     }
 }
