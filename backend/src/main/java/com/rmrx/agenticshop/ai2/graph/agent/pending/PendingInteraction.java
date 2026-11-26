@@ -36,6 +36,16 @@ public sealed interface PendingInteraction extends Serializable {
     /** Whether the answer fits this interaction (type, option values). Dismissed fits every interaction. */
     boolean accepts(HumanAnswer answer);
 
+    /** What the customer is asked: the question, or the approval's title. */
+    default String promptText() {
+        return switch (this) {
+            case ChoiceQuestion q -> q.question();
+            case InputQuestion q -> q.question();
+            case YesNoQuestion q -> q.question();
+            case ApprovalRequest a -> a.title();
+        };
+    }
+
     /**
      * A deterministic id: langgraph4j calls {@code interrupt()} again every time the node is entered (e.g. a run
      * recovered from its checkpoint), and the same pending call must keep the id the UI already has.

@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.ai2.contract.interaction;
 
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -19,5 +20,10 @@ public final class InteractionJson {
 
     public static String write(Object value) {
         return MAPPER.writeValueAsString(value);
+    }
+
+    /** JSON text as a tree (null for null), e.g. to return a stored JSON column as an object. */
+    public static JsonNode tree(String json) {
+        return json == null ? null : MAPPER.readTree(json);
     }
 }

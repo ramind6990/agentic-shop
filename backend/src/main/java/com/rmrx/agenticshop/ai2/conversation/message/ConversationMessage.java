@@ -1,0 +1,20 @@
+package com.rmrx.agenticshop.ai2.conversation.message;
+
+import tools.jackson.databind.JsonNode;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * One row of the chat timeline ({@code ai2_conversation_message}). JSON columns are trees, so the timeline returns
+ * them as objects.
+ *
+ * @param text    USER: the customer's text; ASSISTANT: the reply text; INTERACTION: the question or approval title
+ * @param payload ASSISTANT: the AgentResponse; INTERACTION: the pending interaction
+ * @param display ASSISTANT only: the shown result {@code {toolName, selectedItemIdentifiers, data, summary}}
+ * @param answer  INTERACTION only: the customer's answer
+ */
+public record ConversationMessage(Long id, Long conversationId, UUID runId, MessageKind kind, String text,
+                                  JsonNode payload, JsonNode display, UUID interactionId,
+                                  InteractionStatus interactionStatus, JsonNode answer, Instant createdAt) {
+}

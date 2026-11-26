@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai2.graph.node;
 import com.rmrx.agenticshop.ai2.graph.RunLimits;
 import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
+import com.rmrx.agenticshop.ai2.memory.HistoryProvider;
 import com.rmrx.agenticshop.ai2.model.SystemPrompt;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
 import dev.langchain4j.data.message.AiMessage;
@@ -38,19 +39,15 @@ public class ModelCallNode implements NodeActionWithConfig<RunState> {
     private final ToolRegistry registry;
     private final ChatModel model;
     private final SystemPrompt systemPrompt;
+    private final HistoryProvider historyProvider;
 
-    public ModelCallNode(ToolRegistry registry, ChatModel model, SystemPrompt systemPrompt) {
+    public ModelCallNode(ToolRegistry registry, ChatModel model, SystemPrompt systemPrompt,
+                         HistoryProvider historyProvider) {
         this.registry = registry;
         this.model = model;
         this.systemPrompt = systemPrompt;
+        this.historyProvider = historyProvider;
     }
-
-    // TODO history provider (bean): load the projection of earlier runs here, when building the prompt
-    //  (system prompt + history + RunState messages). History is not kept in RunState.
-    //  - Summarization does NOT happen here: it runs after the graph finishes, when this run's projection is
-    //    appended to the history, and the summary is persisted so loading stays a cheap read.
-    //  - Loading on every call is only consistent because a conversation has at most one active run; that must be
-    //    enforced persistently per conversation (not only by the UI).
 
     @Override
     public Map<String, Object> apply(RunState state, RunnableConfig config) {
@@ -58,6 +55,9 @@ public class ModelCallNode implements NodeActionWithConfig<RunState> {
         List<ChatMessage> messages = new ArrayList<>();
         // rendered per call, never stored in MESSAGES (date, tools-off note)
         messages.add(SystemMessage.from(systemPrompt.render(state.context(), toolsOn)));
+        // earlier runs of the conversation (summary + newer messages; summarizes first when due); not in RunState.
+        // Consistent across the run's model calls: a conversation has one active run, so nothing else writes it.
+        messages.addAll(historyProvider.history(state.context()));
         messages.addAll(state.messages());
 
         ChatRequest request = ChatRequest.builder()

@@ -2,7 +2,10 @@ package com.rmrx.agenticshop.ai2.conversation;
 
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.graph.RunGraph;
+import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
+import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
+import com.rmrx.agenticshop.ai2.memory.HistoryProvider;
 import com.rmrx.agenticshop.ai2.checkpointer.JdbcCheckpointSaver;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
@@ -31,9 +34,8 @@ import java.util.UUID;
 
 /**
  * Starts, resumes and discards graph runs; the only place outside the graph package that talks to langgraph4j. A run's
- * checkpoint thread is its run id. Runs execute synchronously in the calling thread.
+ * checkpoint thread is its run id. Runs execute synchronously in the calling thread ({@link RunLauncher}'s).
  */
-// TODO stream node outputs as progress events instead of waiting for the end of the run.
 @Component
 public class GraphRunner {
 
@@ -44,8 +46,8 @@ public class GraphRunner {
 
     public GraphRunner(ToolRegistry registry, ToolCallExecutor executor, JdbcCheckpointSaver checkpoints,
                        @Qualifier(Ai2ModelConfig.CHAT_MODEL) ChatModel model, SystemPrompt systemPrompt,
-                       Ai2ReplyProperties reply) throws GraphStateException {
-        this.graph = new RunGraph(checkpoints, registry, executor, model, systemPrompt, reply).graph();
+                       Ai2ReplyProperties reply, HistoryProvider historyProvider) throws GraphStateException {
+        this.graph = new RunGraph(checkpoints, registry, executor, model, systemPrompt, reply, historyProvider).graph();
         this.checkpoints = checkpoints;
     }
 
@@ -54,15 +56,15 @@ public class GraphRunner {
         Map<String, Object> input = Map.of(
                 RunState.CONTEXT, context,
                 RunState.MESSAGES, new ArrayList<>(messages));
-        return run(GraphInput.args(input), config(context.runId()), context.runId());
+        return run(GraphInput.args(input), config(context.runId()), context.conversationId(), context.runId());
     }
 
     /** Stores the answer to the paused call and continues the run until it completes or pauses again. */
-    public RunOutcome resume(UUID runId, String callId, HumanAnswer answer) {
+    public RunOutcome resume(Long conversationId, UUID runId, String callId, HumanAnswer answer) {
         try {
             RunnableConfig config = graph.updateState(config(runId),
                     Map.of(RunState.HUMAN_ANSWERS, Map.of(callId, answer)));
-            return run(GraphInput.resume(), config, runId);
+            return run(GraphInput.resume(), config, conversationId, runId);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
@@ -79,7 +81,7 @@ public class GraphRunner {
         }
     }
 
-    private RunOutcome run(GraphInput input, RunnableConfig config, UUID runId) {
+    private RunOutcome run(GraphInput input, RunnableConfig config, Long conversationId, UUID runId) {
         GraphResult result = graph.invokeSync(input, config);
         if (result.isInterruptionMetadata()) {
             InterruptionMetadata<RunState> interruption = result.asInterruptionMetadata();
@@ -87,11 +89,14 @@ public class GraphRunner {
                     .map(PendingInteraction.class::cast)
                     .orElseThrow(() -> new IllegalStateException(
                             "run " + runId + " paused at " + interruption.nodeId() + " without a pending interaction"));
-            return new RunOutcome.Paused(runId, pending);
+            return new RunOutcome.Paused(conversationId, runId, pending);
         }
         RunState finalState = new RunState(finalStateData(result));
-        return new RunOutcome.Completed(runId, finalState.response()
-                .orElseThrow(() -> new IllegalStateException("run " + runId + " ended without a response")));
+        AgentResponse response = finalState.response()
+                .orElseThrow(() -> new IllegalStateException("run " + runId + " ended without a response"));
+        ToolResult displayed = response.finalReferenceToDisplay() == null ? null
+                : finalState.toolResults().get(response.finalReferenceToDisplay().ref());
+        return new RunOutcome.Completed(conversationId, runId, response, displayed);
     }
 
     /** The completed run's state: returned as data, or (the checkpoints being released at the end) as the last one. */

@@ -96,10 +96,15 @@ public class JdbcCheckpointSaver implements BaseCheckpointSaver {
                     checkpoint.getId(), checkpoint.getNodeId(), checkpoint.getNextNodeId(), serializer.contentType(),
                     data, at, run, config.checkPointId().get());
         } else {
-            jdbc.update("insert into ai2_checkpoint (id, run_id, node_id, next_node_id, content_type, state_data, "
-                            + "created_at) values (?, ?, ?, ?, ?, ?, ?)",
-                    checkpoint.getId(), run, checkpoint.getNodeId(), checkpoint.getNextNodeId(),
-                    serializer.contentType(), data, at);
+            // the conversation comes from the run's active run row (which must exist while the run executes)
+            int inserted = jdbc.update("""
+                            insert into ai2_checkpoint (id, run_id, conversation_id, node_id, next_node_id, content_type,
+                                                        state_data, created_at)
+                            select ?, a.run_id, a.conversation_id, ?, ?, ?, ?, ?
+                            from ai2_active_run a where a.run_id = ?""",
+                    checkpoint.getId(), checkpoint.getNodeId(), checkpoint.getNextNodeId(), serializer.contentType(),
+                    data, at, run);
+            if (inserted == 0) throw new IllegalStateException("no active run " + run + " for its checkpoint");
         }
         return config.withCheckPointId(checkpoint.getId());
     }

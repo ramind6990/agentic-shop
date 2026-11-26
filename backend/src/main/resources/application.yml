@@ -132,6 +132,22 @@ app:
       max-text-length: 600
       max-suggestions: 3
       max-suggestion-label-length: 40
+    # conversation memory: older messages are folded into a summary (inside the next run, when due)
+    memory:
+      summarize-after: ${AI2_SUMMARIZE_AFTER:20}
+      keep-recent: ${AI2_KEEP_RECENT:6}
+      max-summary-chars: 3000
+      # a summary longer than this closes the conversation (new messages: "start a new one")
+      hard-limit-chars: ${AI2_SUMMARY_HARD_LIMIT:6000}
+      prompt-version: v1
+    # live run events (/api/ai2/runs/{runId}/events), in memory
+    events:
+      # closed streams stay replayable this long, so a late reconnect still gets the last event
+      retention: 5m
+      buffer-size: 2000
+      heartbeat: 15s
+      # a stream still open after this is closed (a hung run)
+      max-open: 10m
 
 server:
   port: ${PORT:8080}

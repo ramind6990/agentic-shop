@@ -19,18 +19,24 @@ import java.util.Optional;
  * A successful call gets the given ref. The model sees the ref on the first line of the result ({@code ref: r2}), so it
  * can name the result to display, followed by the JSON of the response's {@link ToolResponse#toAgentSummary()}. The
  * returned {@link ToolResult} holds the full return value itself ({@code ToolExecutionResult.result()}); the calling
- * node stores it in the state.
+ * node stores it in the state. Every execution is reported as tool progress events ({@link ToolProgress}).
  */
 @Component
 public class ToolCallExecutor {
 
     private final ToolRegistry registry;
+    private final ToolProgress progress;
 
-    public ToolCallExecutor(ToolRegistry registry) {
+    public ToolCallExecutor(ToolRegistry registry, ToolProgress progress) {
         this.registry = registry;
+        this.progress = progress;
     }
 
     public ExecutedCall execute(ToolExecutionRequest call, RunContext context, String ref) {
+        return progress.track(call, context.runId(), () -> run(call, context, ref));
+    }
+
+    private ExecutedCall run(ToolExecutionRequest call, RunContext context, String ref) {
         Optional<ToolDefinition> tool = registry.find(call.name());
         if (tool.isEmpty()) return error(call, "Unknown tool: " + call.name());
         if (tool.get().executor() == null) {

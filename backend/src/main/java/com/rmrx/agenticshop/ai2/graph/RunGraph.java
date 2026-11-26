@@ -8,6 +8,7 @@ import com.rmrx.agenticshop.ai2.graph.node.OutputValidationNode;
 import com.rmrx.agenticshop.ai2.graph.node.SensitiveToolExecutionNode;
 import com.rmrx.agenticshop.ai2.graph.node.ToolExecutionNode;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
+import com.rmrx.agenticshop.ai2.memory.HistoryProvider;
 import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
 import com.rmrx.agenticshop.ai2.model.SystemPrompt;
 import com.rmrx.agenticshop.ai2.tools.ToolCallExecutor;
@@ -47,8 +48,9 @@ public class RunGraph {
     private final CompiledGraph<RunState> graph;
 
     public RunGraph(JdbcCheckpointSaver checkpoints, ToolRegistry registry, ToolCallExecutor executor,
-                    ChatModel model, SystemPrompt systemPrompt, Ai2ReplyProperties reply) throws GraphStateException {
-        this.graph = build(checkpoints, registry, executor, model, systemPrompt, reply);
+                    ChatModel model, SystemPrompt systemPrompt, Ai2ReplyProperties reply,
+                    HistoryProvider historyProvider) throws GraphStateException {
+        this.graph = build(checkpoints, registry, executor, model, systemPrompt, reply, historyProvider);
     }
 
     public CompiledGraph<RunState> graph() {
@@ -57,10 +59,10 @@ public class RunGraph {
 
     private static CompiledGraph<RunState> build(JdbcCheckpointSaver checkpoints, ToolRegistry registry,
                                                  ToolCallExecutor executor, ChatModel model,
-                                                 SystemPrompt systemPrompt, Ai2ReplyProperties reply)
-            throws GraphStateException {
+                                                 SystemPrompt systemPrompt, Ai2ReplyProperties reply,
+                                                 HistoryProvider historyProvider) throws GraphStateException {
         StateGraph<RunState> g = new StateGraph<>(RunState.SCHEMA, checkpoints.serializer())
-                .addNode(MODEL_CALL, node_async(new ModelCallNode(registry, model, systemPrompt)))
+                .addNode(MODEL_CALL, node_async(new ModelCallNode(registry, model, systemPrompt, historyProvider)))
                 .addNode(OUTPUT_VALIDATION, node_async(new OutputValidationNode(registry, reply)))
                 .addNode(TOOL_EXECUTION, node_async(new ToolExecutionNode(executor)))
                 .addNode(ASK_USER, node_async(new AskUserNode()))
