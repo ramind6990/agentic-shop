@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.ai2.graph.node;
 
+import com.rmrx.agenticshop.ai2.contract.interaction.InteractionJson;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.RunLimits;
 import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
@@ -159,9 +160,14 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
                 RunState.RESPONSE, parsed.get());
     }
 
+    /** The model's final text as an {@link AgentResponse}; empty when it is missing or not that JSON. */
     private Optional<AgentResponse> parseResponse(String text) {
-        // TODO parse the JSON into AgentResponse
-        return Optional.empty();
+        if (text == null || text.isBlank()) return Optional.empty();
+        try {
+            return Optional.ofNullable(InteractionJson.read(text, AgentResponse.class));
+        } catch (RuntimeException e) {
+            return Optional.empty();
+        }
     }
 
     /** Constraints the JSON schema cannot enforce or the model ignored: status, non-empty text, ≤3 suggestions. */

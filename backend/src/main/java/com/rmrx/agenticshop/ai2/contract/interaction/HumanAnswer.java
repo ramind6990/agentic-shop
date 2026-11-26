@@ -1,13 +1,24 @@
 package com.rmrx.agenticshop.ai2.contract.interaction;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
 
 /**
  * The user's answer to a {@code PendingInteraction}, stored in the run state under the tool call id. Written by the
- * caller before resuming the run.
+ * caller before resuming the run. In JSON the kind is the {@code type} property:
+ * {@code choice | input | yesNo | approval | dismissed}.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = HumanAnswer.ChoiceAnswer.class, name = "choice"),
+        @JsonSubTypes.Type(value = HumanAnswer.InputAnswer.class, name = "input"),
+        @JsonSubTypes.Type(value = HumanAnswer.YesNoAnswer.class, name = "yesNo"),
+        @JsonSubTypes.Type(value = HumanAnswer.ApprovalDecision.class, name = "approval"),
+        @JsonSubTypes.Type(value = HumanAnswer.Dismissed.class, name = "dismissed")})
 public sealed interface HumanAnswer extends Serializable {
 
     /** The compact JSON the model gets as the tool result of an ask call. */
@@ -16,7 +27,7 @@ public sealed interface HumanAnswer extends Serializable {
     record ChoiceAnswer(List<String> values) implements HumanAnswer {
 
         public ChoiceAnswer {
-            values = List.copyOf(values);
+            values = values == null ? List.of() : List.copyOf(values);
         }
 
         @Override

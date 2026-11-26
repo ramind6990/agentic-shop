@@ -9,6 +9,7 @@ import org.bsc.langgraph4j.checkpoint.MemorySaver;
 import org.bsc.langgraph4j.langchain4j.serializer.std.LC4jStateSerializer;
 import org.bsc.langgraph4j.serializer.StateSerializer;
 import org.bsc.langgraph4j.state.AgentState;
+import org.springframework.stereotype.Component;
 
 import java.util.Collection;
 import java.util.Optional;
@@ -21,6 +22,7 @@ import java.util.concurrent.CompletableFuture;
  */
 // TODO replace the in-memory delegate with JDBC persistence (one thread per run); compile the graph with
 //  releaseThread(false) and delete a run's checkpoints when the run ends.
+@Component("ai2JdbcCheckpointSaver")
 public class JdbcCheckpointSaver implements BaseCheckpointSaver {
 
     private final MemorySaver delegate = new MemorySaver();

@@ -2,6 +2,8 @@ package com.rmrx.agenticshop.ai2.graph.agent.pending;
 
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.tools.ask.ChoiceOption;
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
 
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
@@ -11,8 +13,15 @@ import java.util.UUID;
 
 /**
  * What a paused run waits for: one question or approval. It is put in the interrupt metadata by the pausing node and
- * kept on the conversation's active run; the UI answers it by {@link #interactionId()}.
+ * kept on the conversation's active run; the UI answers it by {@link #interactionId()}. In JSON the kind is the
+ * {@code type} property: {@code choice | input | yesNo | approval}.
  */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = PendingInteraction.ChoiceQuestion.class, name = "choice"),
+        @JsonSubTypes.Type(value = PendingInteraction.InputQuestion.class, name = "input"),
+        @JsonSubTypes.Type(value = PendingInteraction.YesNoQuestion.class, name = "yesNo"),
+        @JsonSubTypes.Type(value = PendingInteraction.ApprovalRequest.class, name = "approval")})
 public sealed interface PendingInteraction extends Serializable {
 
     /** Metadata key of the pending interaction in {@code InterruptionMetadata}. */
