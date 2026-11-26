@@ -2,9 +2,11 @@ package com.rmrx.agenticshop.ai2.conversation;
 
 import com.rmrx.agenticshop.ai2.activerun.ActiveRun;
 import com.rmrx.agenticshop.ai2.activerun.ActiveRunRegistry;
+import com.rmrx.agenticshop.ai2.contract.reply.ReplyEnvelopes;
 import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessageStore;
 import com.rmrx.agenticshop.ai2.conversation.message.ReplyDisplay;
 import com.rmrx.agenticshop.ai2.events.AgentEventPublisher;
+import com.rmrx.agenticshop.ai2.events.ChatResponse;
 import com.rmrx.agenticshop.ai2.events.RunEvents;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -48,8 +50,8 @@ public class RunLauncher {
 
     /** Opens the run's event stream and starts {@code graphCall} in the background; returns at once. */
     public RunOutcome.Running launch(ActiveRun run, Supplier<RunOutcome> graphCall) {
-        AgentEventPublisher publisher = events.open(run.runId(), run.userId());
-        publisher.runStarted(run.conversationId());
+        AgentEventPublisher publisher = events.open(run.runId(), run.userId(), run.conversationId());
+        publisher.runStarted();
         try {
             executor.execute(() -> execute(run, publisher, graphCall));
         } catch (RuntimeException e) {
@@ -72,7 +74,7 @@ public class RunLauncher {
                             : ReplyDisplay.of(completed.displayed(), completed.response().finalReferenceToDisplay());
                     messages.appendReply(run.conversationId(), run.runId(), completed.response(), display);
                     activeRuns.release(run.conversationId(), run.runId());
-                    publisher.complete(completed.response(), completed.displayed());
+                    publisher.complete(ReplyEnvelopes.of(completed.response(), completed.displayed()));
                 }
                 case RunOutcome other -> throw new IllegalStateException("unexpected graph outcome: " + other);
             }
@@ -90,6 +92,6 @@ public class RunLauncher {
         } catch (RuntimeException e) {
             log.error("could not release failed ai2 run {}", run.runId(), e);
         }
-        publisher.fail("AGENT_ERROR", "The assistant could not complete this reply.", true);
+        publisher.fail(ChatResponse.ErrorCode.AGENT_ERROR, "The assistant could not complete this reply.", true);
     }
 }

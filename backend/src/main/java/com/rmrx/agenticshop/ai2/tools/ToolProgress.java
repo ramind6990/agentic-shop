@@ -18,7 +18,6 @@ import java.util.function.Supplier;
 public class ToolProgress {
 
     static final String DEFAULT_LABEL = "Working on it…";
-    static final String TOOL_FAILED = "TOOL_FAILED";
 
     private final ToolRegistry registry;
     private final RunEvents events;
@@ -35,7 +34,7 @@ public class ToolProgress {
         ExecutedCall executed = execution.get();
         long durationMs = (System.nanoTime() - start) / 1_000_000;
         boolean success = executed.result() != null;
-        publisher.ifPresent(p -> p.toolFinished(call.name(), success, success ? null : TOOL_FAILED, durationMs));
+        publisher.ifPresent(p -> p.toolFinished(call.name(), success, durationMs));
         return executed;
     }
 

@@ -148,6 +148,17 @@ app:
       heartbeat: 15s
       # a stream still open after this is closed (a hung run)
       max-open: 10m
+    # chat WebSocket (/api/ai2/ws?connectToken=..., token from POST /api/ai2/ws/connect-tokens)
+    ws:
+      allowed-origins: ${AI2_WS_ALLOWED_ORIGINS:http://localhost:4200}
+      connect-token-ttl: 30s
+      max-message-bytes: 16384
+      # a slow client is disconnected once a send blocks this long or this much output is buffered
+      send-time-limit: 10s
+      send-buffer-bytes: 524288
+      # server pings keep proxies happy; no incoming traffic (pongs included) for idle-timeout closes the socket
+      ping-interval: 15s
+      idle-timeout: 60s
 
 server:
   port: ${PORT:8080}

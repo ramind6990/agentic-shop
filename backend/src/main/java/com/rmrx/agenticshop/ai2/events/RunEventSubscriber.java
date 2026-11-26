@@ -6,7 +6,7 @@ package com.rmrx.agenticshop.ai2.events;
  */
 public interface RunEventSubscriber {
 
-    void onEvent(AgentEvent event);
+    void onEvent(ChatResponse event);
 
     /** The stream closed (after its last event) or this subscriber was dropped for falling too far behind. */
     void onClose();

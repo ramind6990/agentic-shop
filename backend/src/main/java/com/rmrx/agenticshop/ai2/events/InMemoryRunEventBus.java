@@ -1,8 +1,9 @@
 package com.rmrx.agenticshop.ai2.events;
 
-import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
+import com.rmrx.agenticshop.ai2.contract.reply.ReplyEnvelope;
+import com.rmrx.agenticshop.ai2.events.ChatResponse.Progress;
+import com.rmrx.agenticshop.ai2.events.ChatResponse.Stage;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
-import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,11 +72,11 @@ public class InMemoryRunEventBus implements RunEventBus {
     }
 
     @Override
-    public AgentEventPublisher open(UUID runId, Long ownerUserId) {
+    public AgentEventPublisher open(UUID runId, Long ownerUserId, Long conversationId) {
         Channel channel = runs.compute(runId, (id, previous) -> {
-            if (previous == null) return new Channel(runId, ownerUserId, 0);
+            if (previous == null) return new Channel(runId, ownerUserId, conversationId, 0);
             previous.forceClose();
-            return new Channel(runId, ownerUserId, previous.lastSeq());
+            return new Channel(runId, ownerUserId, conversationId, previous.lastSeq());
         });
         return new ChannelPublisher(channel);
     }
@@ -128,26 +129,28 @@ public class InMemoryRunEventBus implements RunEventBus {
 
         final UUID runId;
         final Long owner;
+        final Long conversationId;
         final Instant createdAt = Instant.now();
         private final ReentrantLock lock = new ReentrantLock();
-        private final ArrayDeque<AgentEvent> buffer = new ArrayDeque<>();
+        private final ArrayDeque<ChatResponse> buffer = new ArrayDeque<>();
         private final List<Mailbox> subscribers = new ArrayList<>();
         private long lastSeq;
         private boolean closed;
         private volatile Instant closedAt;
 
-        Channel(UUID runId, Long owner, long lastSeq) {
+        Channel(UUID runId, Long owner, Long conversationId, long lastSeq) {
             this.runId = runId;
             this.owner = owner;
+            this.conversationId = conversationId;
             this.lastSeq = lastSeq;
         }
 
         /** Emits the event built for the next seq; with close, also closes the stream. False if already closed. */
-        boolean emit(LongFunction<AgentEvent> factory, boolean close) {
+        boolean emit(LongFunction<ChatResponse> factory, boolean close) {
             lock.lock();
             try {
                 if (closed) return false;
-                AgentEvent event = factory.apply(++lastSeq);
+                ChatResponse event = factory.apply(++lastSeq);
                 if (buffer.size() >= bufferSize) buffer.pollFirst();
                 buffer.addLast(event);
                 for (int i = subscribers.size() - 1; i >= 0; i--) {
@@ -185,7 +188,7 @@ public class InMemoryRunEventBus implements RunEventBus {
             Mailbox mailbox = new Mailbox(this, subscriber);
             lock.lock();
             try {
-                for (AgentEvent event : buffer) {
+                for (ChatResponse event : buffer) {
                     if (event.seq() > afterSeq) mailbox.replay(event);
                 }
                 if (closed) mailbox.offerClose();
@@ -253,13 +256,13 @@ public class InMemoryRunEventBus implements RunEventBus {
         }
 
         /** Replayed events are never refused; the buffer bounds them. */
-        void replay(AgentEvent event) {
+        void replay(ChatResponse event) {
             pending.incrementAndGet();
             queue.add(event);
         }
 
         /** False if the subscriber is too far behind and should be dropped. */
-        boolean offer(AgentEvent event) {
+        boolean offer(ChatResponse event) {
             if (dead) return true;
             // a replay may already have queued up to bufferSize events
             if (pending.incrementAndGet() > 2 * bufferSize) return false;
@@ -297,7 +300,7 @@ public class InMemoryRunEventBus implements RunEventBus {
                             subscriber.onClose();
                         } else {
                             pending.decrementAndGet();
-                            subscriber.onEvent((AgentEvent) item);
+                            subscriber.onEvent((ChatResponse) item);
                         }
                     } catch (RuntimeException e) {
                         log.debug("Subscriber of run {} failed and was removed: {}", channel.runId, e.toString());
@@ -332,36 +335,35 @@ public class InMemoryRunEventBus implements RunEventBus {
         }
 
         @Override
-        public void runStarted(Long conversationId) {
-            emit("RUN_STARTED", seq -> new AgentEvent.RunStarted(runId(), seq, Instant.now(), conversationId), false);
+        public void runStarted() {
+            progress(new Progress(Stage.RUN_STARTED, null, null, null, null));
         }
 
         @Override
         public void toolStarted(String toolName, String progressLabel) {
-            emit("TOOL_STARTED", seq -> new AgentEvent.ToolStarted(runId(), seq, Instant.now(), toolName,
-                    progressLabel), false);
+            progress(new Progress(Stage.TOOL_STARTED, progressLabel, toolName, null, null));
         }
 
         @Override
-        public void toolFinished(String toolName, boolean success, String errorCode, long durationMs) {
-            emit("TOOL_FINISHED", seq -> new AgentEvent.ToolFinished(runId(), seq, Instant.now(), toolName,
-                    success, errorCode, durationMs), false);
+        public void toolFinished(String toolName, boolean success, long durationMs) {
+            progress(new Progress(Stage.TOOL_FINISHED, null, toolName, success, durationMs));
         }
 
         @Override
-        public void complete(AgentResponse response, ToolResult displayed) {
-            emit("FINAL", seq -> new AgentEvent.Final(runId(), seq, Instant.now(), response, displayed), true);
+        public void complete(ReplyEnvelope reply) {
+            emit("REPLY", seq -> ChatResponse.reply(runId(), channel.conversationId, seq, reply), true);
         }
 
         @Override
         public void pause(PendingInteraction interaction) {
-            emit("PAUSED", seq -> new AgentEvent.Paused(runId(), seq, Instant.now(), interaction), true);
+            emit("INTERACTION", seq -> ChatResponse.interaction(runId(), channel.conversationId, seq, interaction),
+                    true);
         }
 
         @Override
-        public void fail(String code, String message, boolean retryable) {
-            emit("ERROR", seq -> new AgentEvent.Error(runId(), seq, Instant.now(), code, message, retryable),
-                    true);
+        public void fail(ChatResponse.ErrorCode code, String message, boolean retryable) {
+            emit("ERROR", seq -> ChatResponse.error(runId(), channel.conversationId, seq,
+                    new ChatResponse.Error(code, message, retryable)), true);
         }
 
         @Override
@@ -369,9 +371,14 @@ public class InMemoryRunEventBus implements RunEventBus {
             return channel.isClosed();
         }
 
-        private void emit(String type, LongFunction<AgentEvent> factory, boolean close) {
+        private void progress(Progress progress) {
+            emit(progress.stage().name(), seq -> ChatResponse.progress(runId(), channel.conversationId, seq, progress),
+                    false);
+        }
+
+        private void emit(String what, LongFunction<ChatResponse> factory, boolean close) {
             if (!channel.emit(factory, close)) {
-                log.debug("Run {} stream is closed; ignored {}", channel.runId, type);
+                log.debug("Run {} stream is closed; ignored {}", channel.runId, what);
             }
         }
     }

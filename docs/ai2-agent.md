@@ -11,9 +11,11 @@ This document describes what exists today. Open items are listed at the end.
 ## 1. Big picture
 
 ```
-POST /api/ai2/conversations/messages            (first message: creates the conversation)
-POST /api/ai2/conversations/{id}/messages       (next messages)
-POST /api/ai2/conversations/{id}/answers        (answer to a question / approval)
+WS   /api/ai2/ws?connectToken=…                 (chat socket: send / answer in, run events out — the main channel)
+POST /api/ai2/ws/connect-tokens                 (one-time connect token for the socket handshake)
+POST /api/ai2/conversations/messages            (REST send, first message: creates the conversation — to be removed)
+POST /api/ai2/conversations/{id}/messages       (REST send, next messages — to be removed)
+POST /api/ai2/conversations/{id}/answers        (REST answer to a question / approval — to be removed)
 GET  /api/ai2/conversations/{id}/messages       (timeline)
 GET  /api/ai2/runs/{runId}/events               (live run events, SSE)
           │
@@ -21,7 +23,7 @@ GET  /api/ai2/runs/{runId}/events               (live run events, SSE)
 ConversationService ── conversation + ownership checks, one active run per conversation,
           │            stores the user's message
           ▼
-RunLauncher ── runs the graph on a virtual thread; stores question/approval or reply, then emits PAUSED / FINAL
+RunLauncher ── runs the graph on a virtual thread; stores question/approval or reply, then emits INTERACTION / REPLY
           │
           ▼
 GraphRunner ── the only class outside `graph` that talks to langgraph4j (start / resume / discard)
@@ -53,20 +55,22 @@ answered). A conversation has at most one active run at a time.
 | `ai2.contract.interaction` | `HumanAnswer`, `InteractionJson` |
 | `ai2.contract.tool` | `ToolResponse`, `ToolResult` |
 | `ai2.contract.tool.response` | product and order response contracts |
+| `ai2.contract.reply` | `ReplyEnvelope`, `BlockType`, `ReplyEnvelopes` (agent response → envelope) |
 | `ai2.tools` | `ToolRegistry`, `ToolCallExecutor`, `ToolProgress`, annotations (`@ToolLabel`, `@Sensitive`, `@AskUser`), `ToolCategory` … |
 | `ai2.tools.ask` | `AskUserTools` (`ask_choice`, `ask_input`, `ask_yes_no`) + their argument records |
 | `ai2.tools.product` | `ProductTools` (`search_products`, mock data) |
 | `ai2.tools.order` | `OrderTools` (`search_orders`, `cancel_order`, mock data) |
 | `ai2.model` | `Ai2ModelConfig` (the `ai2ChatModel` bean), `SystemPrompt`, `Ai2ModelProperties`, `Ai2PromptProperties`, `Ai2ReplyProperties` |
 | `ai2.conversation` | `ConversationService`, `RunLauncher`, `GraphRunner`, `RunOutcome`, `ConversationConflictException` |
-| `ai2.events` | `AgentEvent`, `AgentEventPublisher`, `RunEvents` / `RunEventBus`, `InMemoryRunEventBus`, `Ai2EventProperties` |
+| `ai2.events` | `ChatResponse` (the one outgoing message), `AgentEventPublisher`, `RunEvents` / `RunEventBus`, `InMemoryRunEventBus`, `Ai2EventProperties` |
 | `ai2.events.sse` | `SseRunEventTransport` |
+| `ai2.events.ws` | `WsConfig`, `Ai2WsProperties`, `WsConnectTokenStore`, `WsHandshakeInterceptor`, `WsUser`, `ChatSocketHandler`, `ClientSession`, `ClientMessage` |
 | `ai2.conversation.store` | `Conversation`, `ConversationStore` |
 | `ai2.conversation.message` | `ConversationMessage`, `ConversationMessageStore`, `MessageKind`, `InteractionStatus`, `ReplyDisplay` |
 | `ai2.activerun` | `ActiveRun`, `ActiveRunRegistry` |
 | `ai2.checkpointer` | `JdbcCheckpointSaver` |
 | `ai2.memory` | `HistoryProvider`, `ConversationSummarizer`, `HistoryProjection`, `ConversationMemoryStore`, `Ai2MemoryProperties` |
-| `ai2.web` | `ConversationController`, `RunEventsController`, `SendMessageRequest`, `AnswerRequest` |
+| `ai2.web` | `ConversationController`, `RunEventsController`, `WsConnectTokenController`, `SendMessageRequest`, `AnswerRequest` |
 
 ---
 
@@ -150,6 +154,27 @@ limit derived from these.
   `selectedItemIdentifiers` narrows it to some items (empty = all). Null when nothing is shown.
 - The final answer arrives through the request's JSON response format; a model output with tool calls is a step, not
   a reply.
+
+### Reply envelope (what the client gets)
+
+A REPLY message (`ChatResponse.reply`, section 11) carries a `ReplyEnvelope`, built by `ReplyEnvelopes` from the
+response and the tool result its `finalReferenceToDisplay.ref` names:
+
+```json
+{
+  "status": "ANSWERED",
+  "text": "Here are the running shoes I found.",
+  "blockType": "PRODUCT_LIST",
+  "productList": [ { "id": 101, "title": "…", "price": 89.90, "thumbnailUrl": "…" } ],
+  "suggestedReplies": [ { "label": "…", "text": "…" } ]
+}
+```
+
+- `blockType`: `NONE | PRODUCT_LIST | ORDER_LIST`; only the matching list (`productList` / `orderList`, full item data)
+  is present. Blocks are lists of items only: any other displayed result (e.g. an order cancellation) gives `NONE`
+  and the text says what happened.
+- Items are narrowed to `selectedItemIdentifiers` (empty = all), with the ids of `ToolResponse.itemIdentifiers()`.
+- The timeline still stores the raw response and `ReplyDisplay` (unchanged).
 
 ---
 
@@ -303,24 +328,39 @@ All endpoints need the `AI_CHAT` permission (customers and support staff).
 The POST endpoints return at once with a `RunOutcome`: `running` (the run executes in the background) or `abandoned`
 (`unanswered`); always `conversationId` and `runId`. How a running run ends comes as run events.
 
+### What the client receives: `ChatResponse`
+
+Every message to the UI (WebSocket frame, SSE event) has one shape, `ChatResponse`. `type` says what it is and
+exactly the matching payload is set:
+
+```json
+{"type":"PROGRESS","requestId":"r1","conversationId":9,"runId":"…","at":"…","progress":{"stage":"ACCEPTED"}}
+{"type":"PROGRESS","conversationId":9,"runId":"…","seq":2,"at":"…","progress":{"stage":"TOOL_STARTED","label":"Searching products for running shoes","toolName":"search_products"}}
+{"type":"REPLY","conversationId":9,"runId":"…","seq":4,"at":"…","reply":{"status":"ANSWERED","text":"…","blockType":"PRODUCT_LIST","productList":[…],"suggestedReplies":[]}}
+{"type":"INTERACTION","conversationId":9,"runId":"…","seq":4,"at":"…","interaction":{"type":"approval","interactionId":"…","title":"Do you want to cancel order WE45?"}}
+{"type":"ERROR","requestId":"r3","at":"…","error":{"code":"CONFLICT","message":"…","retryable":true}}
+```
+
+| type | Payload | When |
+|---|---|---|
+| `PROGRESS` | `progress`: `stage` `ACCEPTED` (a chat request was taken; WS only) · `RUN_STARTED` (start or resume) · `TOOL_STARTED` (`label` = rendered `@ToolLabel`, `toolName`) · `TOOL_FINISHED` (`toolName`, `success`, `durationMs`) | while a run executes |
+| `REPLY` | `reply`: the `ReplyEnvelope` (section 4) | the run completed; last event |
+| `INTERACTION` | `interaction`: the `PendingInteraction` (question or approval) | the run waits for an answer; last event of this stream |
+| `ERROR` | `error`: `code`, `message`, `retryable` | `AGENT_ERROR` (the run failed), `RUN_NOT_LIVE`, and for a refused WS request `BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `INTERACTION_CLOSED` (the answered question is no longer open: send a new message), `INTERNAL` |
+
+- Run events carry `seq` (1, 2, 3 … per run, continuing across a pause and its resume). Answers to a WS request
+  (ACCEPTED, refusals) carry its `requestId` and no `seq`. `conversationId` is on every run event.
+- A run's stream ends with its first non-PROGRESS event.
+
 ### Run events (SSE)
 
 `GET /api/ai2/runs/{runId}/events` (`text/event-stream`, owner only, otherwise 404). Frames: `id:` = seq,
-`event:` = type, `data:` = the event JSON (with `type`, `runId`, `seq`, `at`).
-
-| Event | Fields | When |
-|---|---|---|
-| `RUN_STARTED` | `conversationId` | the run starts or resumes |
-| `TOOL_STARTED` | `toolName`, `progressLabel` (rendered `@ToolLabel`) | before a read or approved sensitive tool executes |
-| `TOOL_FINISHED` | `toolName`, `success`, `errorCode` (`TOOL_FAILED` or null), `durationMs` | after it |
-| `FINAL` | `response` (`AgentResponse`), `displayed` (the shown `ToolResult` or null) | run completed; last event |
-| `PAUSED` | `interaction` (`PendingInteraction`) | run waits for an answer; last event of this stream |
-| `ERROR` | `code` (`AGENT_ERROR`, `RUN_NOT_LIVE`), `message`, `retryable` | run failed / not streamed here |
+`event:` = the `ChatResponse` type (`PROGRESS`, `REPLY`, `INTERACTION`, `ERROR`), `data:` = the `ChatResponse` JSON.
 
 - The stream is opened before the POST returns, so subscribing after it replays the stream from its first event.
-- PAUSED and FINAL are emitted after the interaction / reply is stored and the active run updated, so the client can
-  answer or send right away. Answering a PAUSED run resumes the same `runId` with a new stream whose seq continues;
-  the client subscribes again (with `Last-Event-ID` = the last seq it saw, or from scratch).
+- REPLY and INTERACTION are emitted after the reply / interaction is stored and the active run updated, so the client
+  can answer or send right away. Answering resumes the same `runId` with a new stream whose seq continues; the client
+  subscribes again (with `Last-Event-ID` = the last seq it saw, or from scratch).
 - Reconnect with `Last-Event-ID` (or `?after=`) to get only later events. Closed streams stay replayable for
   `retention`; an unknown or evicted run gets one `ERROR` `RUN_NOT_LIVE`.
 - In memory, single instance (`InMemoryRunEventBus`, same design as the `ai` package's bus); never persisted.
@@ -330,6 +370,45 @@ Answer bodies by type: `{"type":"choice","values":[…]}`, `{"type":"input","tex
 
 Errors: 400 invalid body, 401/403 auth, 404 not the caller's conversation, 409 run in progress / no question to
 answer / conversation full.
+
+### WebSocket (the chat channel)
+
+**Handshake.** Browsers cannot send an `Authorization` header on a WebSocket, and the JWT should not go into a URL:
+
+1. `POST /api/ai2/ws/connect-tokens` with the bearer JWT (`AI_CHAT`) → `{"connectToken": "…", "expiresAt": "…"}`.
+   The token is 32 random bytes, valid for `connect-token-ttl` (30s) and **single use**.
+2. Open `ws://…/api/ai2/ws?connectToken=…`. The handshake consumes the token: missing / unknown / used / expired →
+   **401**, a user without `AI_CHAT` → **403**, an Origin not in `allowed-origins` → **403** (a client without an
+   Origin header, i.e. not a browser, is let through). The security chain permits only this GET path unauthenticated.
+3. Every frame then acts as that user only. Ownership is checked as for REST: another user's conversation or run →
+   `NOT_FOUND`.
+4. The socket is closed (1008, "Session expired; reconnect with a new connect token") when the JWT the connect token
+   was issued for expires.
+
+**Client frames** (`ClientMessage`, `type` property; `requestId` is the client's correlation id, ≤ 64 chars):
+
+```json
+{"type":"chat","requestId":"r1","text":"show me running shoes"}
+{"type":"chat","requestId":"r2","conversationId":9,"text":"and in red?"}
+{"type":"chat","requestId":"r3","conversationId":9,"interactionId":"…","answer":{"type":"approval","approved":true}}
+{"type":"subscribe","requestId":"s1","runId":"…","afterSeq":4}
+```
+
+`chat` is the merged send/answer contract (`ChatRequest`): either `text` (≤ 4000; without `conversationId` a new
+conversation is created) or `conversationId + interactionId + answer`. `subscribe` re-attaches to a run's events after a
+reconnect, from the event after `afterSeq` (0 / absent = everything buffered).
+
+**Server frames** are `ChatResponse`s (see above). A taken chat request gets PROGRESS `ACCEPTED` (with `requestId`,
+`conversationId` — the new one for a first message — and `runId`), then the run's events follow on the socket. A
+refused request gets an ERROR with its `requestId` and the socket stays open. An answer that no longer matches the
+open question gets ERROR `INTERACTION_CLOSED` (the paused run was abandoned). After a matching answer, the same `runId`
+resumes and its events (seq continuing) come on the same socket automatically.
+
+**Limits.** Client frames over `max-message-bytes` (16 KB) close the socket (1009). Sends go through a
+`ConcurrentWebSocketSessionDecorator`: a client that blocks a send longer than `send-time-limit` or lets
+`send-buffer-bytes` pile up is disconnected, never the run. The server pings every `ping-interval`; a client that
+sends nothing (pongs included) for `idle-timeout` is closed. Both use Spring's 4500 ("session not reliable"). Closing a
+socket only stops delivery; runs go on and can be re-subscribed from another socket.
 
 ---
 
@@ -362,6 +441,14 @@ app:
       buffer-size: 2000
       heartbeat: 15s
       max-open: 10m       # a stream still open after this is closed (hung run)
+    ws:             # chat WebSocket
+      allowed-origins: ${AI2_WS_ALLOWED_ORIGINS:http://localhost:4200}
+      connect-token-ttl: 30s
+      max-message-bytes: 16384
+      send-time-limit: 10s
+      send-buffer-bytes: 524288
+      ping-interval: 15s
+      idle-timeout: 60s   # no incoming traffic (pongs included) for this long closes the socket
 ```
 
 ---
@@ -376,7 +463,7 @@ Seeded demo users: `customer_1`, `customer_2`, … (see `db/seed/V111__seed_logi
 ```powershell
 $headers = @{ Authorization = "Bearer " + (Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/auth/login -ContentType 'application/json' -Body (@{ username = 'customer_1'; password = $password } | ConvertTo-Json)).token }
 $r = Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/ai2/conversations/messages -Headers $headers -ContentType 'application/json' -Body '{"text":"please cancel my order WE45"}'
-# follow the run until FINAL / PAUSED / ERROR; the PAUSED event carries interaction.interactionId
+# follow the run until REPLY / INTERACTION / ERROR; the INTERACTION event carries interaction.interactionId
 curl.exe -sN -H "Authorization: $($headers.Authorization)" "http://localhost:8080/api/ai2/runs/$($r.runId)/events"
 Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/ai2/conversations/$($r.conversationId)/answers" -Headers $headers -ContentType 'application/json' -Body (@{ interactionId = $interactionId; answer = @{ type = 'approval'; approved = $true } } | ConvertTo-Json -Depth 5)
 ```
@@ -390,14 +477,18 @@ user's conversation 404; delete cascades; summarization inside the run; hard lim
 
 ## 14. Open items
 
-- Reply envelope (turn `displayed` into UI blocks with item actions); token streaming of the reply text.
+- Item actions in the reply envelope (view, track, cancel…); token streaming of the reply text; shipments in the
+  envelope once a shipment tool exists.
+- Remove the REST send/answer endpoints once the UI uses the WebSocket.
+- WebSocket hardening: a cap on open sockets per user, and a rate limit on chat frames.
 - Real data for the tools (catalog and order services), always scoped to the run's customer.
 - Pre-approval check for sensitive tools: today `cancel_order` on a delivered order asks for approval first and only
   then fails; check feasibility (and compute consequences for the approval detail) before pausing.
 - Validation stubs: tool-argument checks, per-step call cap, duplicate calls, silent fixes.
 - A visible error reply when a run fails (today the user's message stays unanswered in the timeline; only an ERROR
   event is emitted).
-- Several app instances: run events live in one JVM (needs a shared bus behind `RunEventBus`).
+- Several app instances: run events and connect tokens live in one JVM (needs a shared bus behind `RunEventBus` and a
+  shared connect-token store).
 - Retries on model errors; token/cost budget per run; usage recording for ai2 model calls.
 - Several app instances: dropping RUNNING runs at startup assumes one instance (needs owner + heartbeat, or resuming
   from checkpoints).
