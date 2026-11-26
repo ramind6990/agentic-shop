@@ -15,6 +15,8 @@ public final class RunLimits {
     /** Tool calls executed from one model message; the rest get a "skipped" result. */
     public static final int MAX_CALLS_PER_STEP = 5;
 
+    // the final reply's limits are configuration (Ai2ReplyProperties): the prompt and the validation share them
+
     private RunLimits() {
     }
 

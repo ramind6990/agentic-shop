@@ -1,5 +1,7 @@
 package com.rmrx.agenticshop.ai2.conversation;
 
+import com.rmrx.agenticshop.ai2.activerun.ActiveRun;
+import com.rmrx.agenticshop.ai2.activerun.ActiveRunRegistry;
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;

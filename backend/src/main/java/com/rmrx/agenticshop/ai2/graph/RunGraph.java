@@ -1,6 +1,6 @@
 package com.rmrx.agenticshop.ai2.graph;
 
-import com.rmrx.agenticshop.ai2.graph.checkpoint.JdbcCheckpointSaver;
+import com.rmrx.agenticshop.ai2.checkpointer.JdbcCheckpointSaver;
 import com.rmrx.agenticshop.ai2.graph.edge.RunRoutes;
 import com.rmrx.agenticshop.ai2.graph.node.AskUserNode;
 import com.rmrx.agenticshop.ai2.graph.node.ModelCallNode;
@@ -8,8 +8,11 @@ import com.rmrx.agenticshop.ai2.graph.node.OutputValidationNode;
 import com.rmrx.agenticshop.ai2.graph.node.SensitiveToolExecutionNode;
 import com.rmrx.agenticshop.ai2.graph.node.ToolExecutionNode;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
+import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
+import com.rmrx.agenticshop.ai2.model.SystemPrompt;
 import com.rmrx.agenticshop.ai2.tools.ToolCallExecutor;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
+import dev.langchain4j.model.chat.ChatModel;
 import org.bsc.langgraph4j.CompileConfig;
 import org.bsc.langgraph4j.CompiledGraph;
 import org.bsc.langgraph4j.GraphStateException;
@@ -43,9 +46,9 @@ public class RunGraph {
 
     private final CompiledGraph<RunState> graph;
 
-    public RunGraph(JdbcCheckpointSaver checkpoints, ToolRegistry registry, ToolCallExecutor executor)
-            throws GraphStateException {
-        this.graph = build(checkpoints, registry, executor);
+    public RunGraph(JdbcCheckpointSaver checkpoints, ToolRegistry registry, ToolCallExecutor executor,
+                    ChatModel model, SystemPrompt systemPrompt, Ai2ReplyProperties reply) throws GraphStateException {
+        this.graph = build(checkpoints, registry, executor, model, systemPrompt, reply);
     }
 
     public CompiledGraph<RunState> graph() {
@@ -53,10 +56,12 @@ public class RunGraph {
     }
 
     private static CompiledGraph<RunState> build(JdbcCheckpointSaver checkpoints, ToolRegistry registry,
-                                                 ToolCallExecutor executor) throws GraphStateException {
+                                                 ToolCallExecutor executor, ChatModel model,
+                                                 SystemPrompt systemPrompt, Ai2ReplyProperties reply)
+            throws GraphStateException {
         StateGraph<RunState> g = new StateGraph<>(RunState.SCHEMA, checkpoints.serializer())
-                .addNode(MODEL_CALL, node_async(new ModelCallNode(registry)))
-                .addNode(OUTPUT_VALIDATION, node_async(new OutputValidationNode(registry)))
+                .addNode(MODEL_CALL, node_async(new ModelCallNode(registry, model, systemPrompt)))
+                .addNode(OUTPUT_VALIDATION, node_async(new OutputValidationNode(registry, reply)))
                 .addNode(TOOL_EXECUTION, node_async(new ToolExecutionNode(executor)))
                 .addNode(ASK_USER, node_async(new AskUserNode()))
                 .addNode(SENSITIVE_TOOL_EXECUTION, node_async(new SensitiveToolExecutionNode(registry, executor)))

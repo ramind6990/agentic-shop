@@ -111,6 +111,28 @@ app:
       hnsw-iterative-scan: relaxed_order
       excerpt-chars: 600
 
+  # the ai2 agent's own model (independent of app.ai), called through OpenAI's Responses API (/v1/responses);
+  # without an API key the app starts, but ai2 runs fail
+  ai2:
+    model:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
+      model-name: ${AI2_CHAT_MODEL:gpt-6-luna}
+      max-output-tokens: 4000
+      # none | minimal | low | medium | high; unset = the model's default
+      reasoning-effort: ${AI2_REASONING_EFFORT:}
+      timeout: 60s
+      log-requests: false
+      log-responses: false
+    # system prompt file: prompts/ai2/system-<version>.md
+    prompt:
+      version: ${AI2_PROMPT_VERSION:v1}
+    # limits of the final reply: told to the model in the prompt and enforced by the output validation
+    reply:
+      max-text-length: 600
+      max-suggestions: 3
+      max-suggestion-label-length: 40
+
 server:
   port: ${PORT:8080}
   error:

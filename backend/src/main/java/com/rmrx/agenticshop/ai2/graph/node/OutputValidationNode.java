@@ -5,10 +5,12 @@ import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.RunLimits;
 import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
 import com.rmrx.agenticshop.ai2.graph.agent.response.DisplayReference;
+import com.rmrx.agenticshop.ai2.graph.agent.response.SuggestionReply;
 import com.rmrx.agenticshop.ai2.graph.agent.response.ResponseStatus;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
 import com.rmrx.agenticshop.ai2.graph.state.StepPlan;
 import com.rmrx.agenticshop.ai2.graph.state.ValidationOutcome;
+import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
 import com.rmrx.agenticshop.ai2.tools.ToolCategory;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -36,8 +38,10 @@ import java.util.TreeSet;
 public class OutputValidationNode implements NodeActionWithConfig<RunState> {
 
     private final ToolRegistry registry;
+    private final Ai2ReplyProperties reply;
 
-    public OutputValidationNode(ToolRegistry registry) {
+    public OutputValidationNode(ToolRegistry registry, Ai2ReplyProperties reply) {
+        this.reply = reply;
         this.registry = registry;
     }
 
@@ -172,13 +176,28 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
 
     /** Constraints the JSON schema cannot enforce or the model ignored: status, non-empty text, ≤3 suggestions. */
     private List<String> checkSchema(AgentResponse response) {
-        // TODO
-        return List.of();
+        List<String> errors = new ArrayList<>();
+        if (response.status() == null) errors.add("status is missing (ANSWERED or REFUSED)");
+        if (response.text() == null || response.text().isBlank()) errors.add("text is empty");
+        List<SuggestionReply> suggestions = response.suggestedReplies() == null ? List.of() : response.suggestedReplies();
+        if (suggestions.size() > reply.maxSuggestions()) {
+            errors.add("at most " + reply.maxSuggestions() + " suggestedReplies, got " + suggestions.size());
+        }
+        for (SuggestionReply s : suggestions) {
+            if (s == null || s.label() == null || s.label().isBlank() || s.text() == null || s.text().isBlank()) {
+                errors.add("every suggested reply needs a label and a text");
+            } else if (s.label().length() > reply.maxSuggestionLabelLength()) {
+                errors.add("suggested reply label \"" + s.label() + "\" is longer than "
+                        + reply.maxSuggestionLabelLength() + " characters");
+            }
+        }
+        return errors;
     }
 
     private List<String> checkTextLength(AgentResponse response) {
-        // TODO
-        return List.of();
+        if (response.text() == null || response.text().length() <= reply.maxTextLength()) return List.of();
+        return List.of("text is " + response.text().length() + " characters; keep it under "
+                + reply.maxTextLength() + " and do not repeat the displayed data");
     }
 
     /** The displayed ref exists among this run's tool results, and its selected items belong to that result. */

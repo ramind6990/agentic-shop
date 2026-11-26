@@ -1,11 +1,11 @@
-package com.rmrx.agenticshop.ai2.conversation;
+package com.rmrx.agenticshop.ai2.activerun;
 
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
 
 import java.util.UUID;
 
 /**
- * The one run a conversation may have at a time.
+ * The one run a conversation may have at a time (a row of {@code ai2_active_run}).
  *
  * @param pendingInteraction what the run waits for; set only while {@link Status#PAUSED}
  */
@@ -17,17 +17,5 @@ public record ActiveRun(Long conversationId, UUID runId, Long userId, Status sta
         RUNNING,
         /** The graph waits for the user's answer to {@link #pendingInteraction()}. */
         PAUSED
-    }
-
-    static ActiveRun started(Long conversationId, Long userId) {
-        return new ActiveRun(conversationId, UUID.randomUUID(), userId, Status.RUNNING, null);
-    }
-
-    ActiveRun paused(PendingInteraction interaction) {
-        return new ActiveRun(conversationId, runId, userId, Status.PAUSED, interaction);
-    }
-
-    ActiveRun running() {
-        return new ActiveRun(conversationId, runId, userId, Status.RUNNING, null);
     }
 }
