@@ -13,7 +13,8 @@ export type Permission =
   | 'TICKETS_READ'
   | 'TICKET_INTERNAL_READ'
   | 'FLAGS_READ'
-  | 'DOCUMENTS_READ';
+  | 'DOCUMENTS_READ'
+  | 'AI_CHAT';
 
 export interface LoginResponse {
   token: string;

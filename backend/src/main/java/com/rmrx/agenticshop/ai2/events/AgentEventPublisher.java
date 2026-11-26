@@ -14,8 +14,8 @@ public interface AgentEventPublisher {
 
     UUID runId();
 
-    /** PROGRESS RUN_STARTED. */
-    void runStarted();
+    /** INPUT: what the user sent, starting or resuming the run; requestId is the sending client's, or null. */
+    void input(String requestId, ChatResponse.Input input);
 
     /** PROGRESS TOOL_STARTED with the user-facing label. */
     void toolStarted(String toolName, String progressLabel);

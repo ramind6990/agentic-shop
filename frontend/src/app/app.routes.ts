@@ -80,6 +80,13 @@ const AREA_ROUTES: Routes = [
       import('./features/documents/documents.routes').then((m) => m.DOCUMENT_ROUTES),
   },
 
+  // Support chat with the AI assistant
+  {
+    path: 'chat',
+    canMatch: [permissionGuard],
+    loadChildren: () => import('./features/chat/chat.routes').then((m) => m.CHAT_ROUTES),
+  },
+
   {
     path: 'forbidden',
     title: 'No access · AgenticShop',

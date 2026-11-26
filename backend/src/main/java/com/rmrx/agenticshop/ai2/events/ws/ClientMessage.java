@@ -6,19 +6,18 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 import java.util.UUID;
 
 /**
- * A frame from the client. In JSON the kind is the {@code type} property: {@code chat | subscribe}. requestId is the
- * client's own correlation id, echoed in the {@code ChatResponse} answering the frame (ACCEPTED or ERROR).
+ * A frame from the client. In JSON the kind is the {@code type} property: {@code chat | cancel}. requestId is the
+ * client's own correlation id, echoed in the {@code ChatResponse} it causes (the run's INPUT, or an ERROR refusing it).
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
         @JsonSubTypes.Type(value = ClientMessage.ChatRequest.class, name = "chat"),
-        @JsonSubTypes.Type(value = ClientMessage.SubscribeRequest.class, name = "subscribe")})
+        @JsonSubTypes.Type(value = ClientMessage.CancelRequest.class, name = "cancel")})
 public sealed interface ClientMessage {
 
     String requestId();
@@ -43,8 +42,7 @@ public sealed interface ClientMessage {
         }
     }
 
-    /** Follow a run's events (e.g. after a reconnect), from the event after afterSeq (0 or absent = all buffered). */
-    record SubscribeRequest(@Size(max = 64) String requestId, @NotNull UUID runId, @PositiveOrZero Long afterSeq)
-            implements ClientMessage {
+    /** Stop the conversation's running run. */
+    record CancelRequest(@Size(max = 64) String requestId, @NotNull Long conversationId) implements ClientMessage {
     }
 }

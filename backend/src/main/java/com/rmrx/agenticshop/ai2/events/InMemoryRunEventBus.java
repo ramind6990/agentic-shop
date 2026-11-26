@@ -15,6 +15,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -37,6 +38,9 @@ import java.util.function.LongFunction;
  * is drained by at most one virtual thread at a time, so a slow client never blocks the run or other subscribers. A
  * mailbox more than twice bufferSize events behind is dropped (the client can reconnect with its last seq).
  *
+ * <p>A user subscription ({@link #subscribeUser}) gets every event of every run the user owns, live only, enqueued
+ * under each run's lock like the others (so each run's events stay in order). Runs never close it.
+ *
  * <p>A resumed run reuses its run id: {@link #open} then replaces the previous (closed) stream with a new one whose
  * seq continues where the previous stopped.
  *
@@ -50,6 +54,8 @@ public class InMemoryRunEventBus implements RunEventBus {
     private static final Object CLOSE = new Object();
 
     private final ConcurrentHashMap<UUID, Channel> runs = new ConcurrentHashMap<>();
+    /** Live subscriptions to all runs of a user (never replayed, never closed by a run). */
+    private final ConcurrentHashMap<Long, Set<Mailbox>> users = new ConcurrentHashMap<>();
     private final int bufferSize;
     private final Duration retention;
     private final Duration maxOpen;
@@ -94,6 +100,15 @@ public class InMemoryRunEventBus implements RunEventBus {
     @Override
     public Optional<RunSubscription> subscribe(UUID runId, long afterSeq, RunEventSubscriber subscriber) {
         return live(runId).map(c -> c.subscribe(afterSeq, subscriber));
+    }
+
+    @Override
+    public RunSubscription subscribeUser(Long userId, RunEventSubscriber subscriber) {
+        Mailbox mailbox = new Mailbox(subscriber, "user " + userId);
+        Set<Mailbox> mailboxes = users.computeIfAbsent(userId, id -> ConcurrentHashMap.newKeySet());
+        mailbox.onCancel = () -> mailboxes.remove(mailbox);
+        mailboxes.add(mailbox);
+        return mailbox;
     }
 
     /** The stream unless it is unknown or expired (lazy eviction). */
@@ -161,6 +176,16 @@ public class InMemoryRunEventBus implements RunEventBus {
                         mailbox.offerClose();
                     }
                 }
+                Set<Mailbox> ownerMailboxes = users.get(owner);
+                if (ownerMailboxes != null) {
+                    for (Mailbox mailbox : ownerMailboxes) {
+                        if (!mailbox.offer(event)) {
+                            log.debug("Subscriber of user {} fell behind; dropped", owner);
+                            ownerMailboxes.remove(mailbox);
+                            mailbox.offerClose();
+                        }
+                    }
+                }
                 if (close) closeLocked();
                 return true;
             } finally {
@@ -185,7 +210,8 @@ public class InMemoryRunEventBus implements RunEventBus {
         }
 
         RunSubscription subscribe(long afterSeq, RunEventSubscriber subscriber) {
-            Mailbox mailbox = new Mailbox(this, subscriber);
+            Mailbox mailbox = new Mailbox(subscriber, "run " + runId);
+            mailbox.onCancel = () -> remove(mailbox);
             lock.lock();
             try {
                 for (ChatResponse event : buffer) {
@@ -238,21 +264,24 @@ public class InMemoryRunEventBus implements RunEventBus {
     }
 
     /**
-     * One subscriber's FIFO of pending events. Items are added under the stream's lock (so in seq order); at most one
-     * delivery task drains it at a time, outside any lock.
+     * One subscriber's FIFO of pending events (of one run, or of every run of one user). Items are added under the
+     * emitting stream's lock (so each run's events are in seq order); at most one delivery task drains it at a time,
+     * outside any lock.
      */
     private final class Mailbox implements RunSubscription {
 
-        private final Channel channel;
         private final RunEventSubscriber subscriber;
+        private final String name;
         private final ConcurrentLinkedQueue<Object> queue = new ConcurrentLinkedQueue<>();
         private final AtomicInteger pending = new AtomicInteger();
         private final AtomicBoolean scheduled = new AtomicBoolean();
+        /** Detaches the mailbox from what feeds it. */
+        private Runnable onCancel = () -> { };
         private volatile boolean dead;
 
-        Mailbox(Channel channel, RunEventSubscriber subscriber) {
-            this.channel = channel;
+        Mailbox(RunEventSubscriber subscriber, String name) {
             this.subscriber = subscriber;
+            this.name = name;
         }
 
         /** Replayed events are never refused; the buffer bounds them. */
@@ -303,7 +332,7 @@ public class InMemoryRunEventBus implements RunEventBus {
                             subscriber.onEvent((ChatResponse) item);
                         }
                     } catch (RuntimeException e) {
-                        log.debug("Subscriber of run {} failed and was removed: {}", channel.runId, e.toString());
+                        log.debug("Subscriber of {} failed and was removed: {}", name, e.toString());
                         cancel();
                     }
                 }
@@ -316,7 +345,7 @@ public class InMemoryRunEventBus implements RunEventBus {
         @Override
         public void cancel() {
             dead = true;
-            channel.remove(this);
+            onCancel.run();
         }
     }
 
@@ -335,8 +364,8 @@ public class InMemoryRunEventBus implements RunEventBus {
         }
 
         @Override
-        public void runStarted() {
-            progress(new Progress(Stage.RUN_STARTED, null, null, null, null));
+        public void input(String requestId, ChatResponse.Input input) {
+            emit("INPUT", seq -> ChatResponse.input(runId(), channel.conversationId, seq, requestId, input), false);
         }
 
         @Override

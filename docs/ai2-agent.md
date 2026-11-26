@@ -11,8 +11,10 @@ This document describes what exists today. Open items are listed at the end.
 ## 1. Big picture
 
 ```
-WS   /api/ai2/ws?connectToken=…                 (chat socket: send / answer in, run events out — the main channel)
+WS   /api/ai2/ws?connectToken=…                 (chat socket: send / answer / cancel in, all the user's run events out)
 POST /api/ai2/ws/connect-tokens                 (one-time connect token for the socket handshake)
+GET  /api/ai2/conversations                     (the user's conversations, with titles)
+GET  /api/ai2/conversations/{id}                (one conversation: active run + timeline)
 POST /api/ai2/conversations/messages            (REST send, first message: creates the conversation — to be removed)
 POST /api/ai2/conversations/{id}/messages       (REST send, next messages — to be removed)
 POST /api/ai2/conversations/{id}/answers        (REST answer to a question / approval — to be removed)
@@ -255,7 +257,9 @@ Abandoning marks the question NOT_ANSWERED and drops the run with its checkpoint
 |---|---|---|
 | USER | a message is sent | the text |
 | INTERACTION | a run pauses | the question / approval (`payload`), `interaction_status`, later the `answer` |
-| ASSISTANT | a run completes | the `AgentResponse` (`payload`) and the shown result (`display`: tool name, selected ids, full data, agent summary) |
+| ASSISTANT | a run completes | the `AgentResponse` (`payload`), the shown result (`display`: tool name, selected ids, full data, agent summary) and the `ReplyEnvelope` the UI renders (`reply`) |
+
+A stopped (cancelled) or failed run leaves only the USER message.
 
 Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DENIED (approvals), NOT_ANSWERED (abandoned).
 
@@ -277,7 +281,7 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
 - A failed checkpoint write fails the run (pausing and resuming depend on it).
 - At startup, runs still RUNNING are dropped (cut off by the previous shutdown); PAUSED runs stay and can still be
   answered — a paused approval survives a restart.
-- Migrations: `V12__ai2_active_run_checkpoint.sql`, `V13__ai2_conversation_memory.sql`.
+- Migrations: `V12__ai2_active_run_checkpoint.sql`, `V13__ai2_conversation_memory.sql`, `V14__ai2_message_reply.sql`.
 
 ---
 
@@ -320,6 +324,8 @@ All endpoints need the `AI_CHAT` permission (customers and support staff).
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
+| GET | `/api/ai2/conversations` | — | `[{id, title, status, updatedAt}]`, most recently active first (≤ 100); title = the start of the first message |
+| GET | `/api/ai2/conversations/{id}` | — | `{id, title, status, updatedAt, activeRun: {runId, status, pendingInteraction} \| null, messages}` |
 | POST | `/api/ai2/conversations/messages` | `{"text": "…"}` | `RunOutcome` (new conversation) |
 | POST | `/api/ai2/conversations/{id}/messages` | `{"text": "…"}` | `RunOutcome` |
 | POST | `/api/ai2/conversations/{id}/answers` | `{"interactionId": "…", "answer": {"type": "choice", "values": ["WE45"]}}` | `RunOutcome` |
@@ -334,7 +340,7 @@ Every message to the UI (WebSocket frame, SSE event) has one shape, `ChatRespons
 exactly the matching payload is set:
 
 ```json
-{"type":"PROGRESS","requestId":"r1","conversationId":9,"runId":"…","at":"…","progress":{"stage":"ACCEPTED"}}
+{"type":"INPUT","requestId":"r1","conversationId":9,"runId":"…","seq":1,"at":"…","input":{"text":"show me running shoes"}}
 {"type":"PROGRESS","conversationId":9,"runId":"…","seq":2,"at":"…","progress":{"stage":"TOOL_STARTED","label":"Searching products for running shoes","toolName":"search_products"}}
 {"type":"REPLY","conversationId":9,"runId":"…","seq":4,"at":"…","reply":{"status":"ANSWERED","text":"…","blockType":"PRODUCT_LIST","productList":[…],"suggestedReplies":[]}}
 {"type":"INTERACTION","conversationId":9,"runId":"…","seq":4,"at":"…","interaction":{"type":"approval","interactionId":"…","title":"Do you want to cancel order WE45?"}}
@@ -343,19 +349,22 @@ exactly the matching payload is set:
 
 | type | Payload | When |
 |---|---|---|
-| `PROGRESS` | `progress`: `stage` `ACCEPTED` (a chat request was taken; WS only) · `RUN_STARTED` (start or resume) · `TOOL_STARTED` (`label` = rendered `@ToolLabel`, `toolName`) · `TOOL_FINISHED` (`toolName`, `success`, `durationMs`) | while a run executes |
+| `INPUT` | `input`: `{text}` (a message) or `{answered, answer}` (the question and the user's answer) | first event of a run, and of its resume |
+| `PROGRESS` | `progress`: `stage` `TOOL_STARTED` (`label` = rendered `@ToolLabel`, `toolName`) · `TOOL_FINISHED` (`toolName`, `success`, `durationMs`) | while a run executes |
 | `REPLY` | `reply`: the `ReplyEnvelope` (section 4) | the run completed; last event |
 | `INTERACTION` | `interaction`: the `PendingInteraction` (question or approval) | the run waits for an answer; last event of this stream |
-| `ERROR` | `error`: `code`, `message`, `retryable` | `AGENT_ERROR` (the run failed), `RUN_NOT_LIVE`, and for a refused WS request `BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `INTERACTION_CLOSED` (the answered question is no longer open: send a new message), `INTERNAL` |
+| `ERROR` | `error`: `code`, `message`, `retryable` | `AGENT_ERROR` (the run failed), `CANCELLED` (stopped by the user), `RUN_NOT_LIVE`, and for a refused WS request `BAD_REQUEST`, `NOT_FOUND`, `CONFLICT`, `INTERACTION_CLOSED` (the answered question is no longer open: send a new message), `INTERNAL` |
 
-- Run events carry `seq` (1, 2, 3 … per run, continuing across a pause and its resume). Answers to a WS request
-  (ACCEPTED, refusals) carry its `requestId` and no `seq`. `conversationId` is on every run event.
-- A run's stream ends with its first non-PROGRESS event.
+- Run events carry `seq` (1, 2, 3 … per run, continuing across a pause and its resume) and `conversationId`. INPUT
+  also carries the `requestId` of the WS request that sent it (only meaningful to that client; null over REST).
+  Refusals carry the refused request's `requestId`, no `seq`, and go only to the requesting socket.
+- A run's stream ends with its first REPLY, INTERACTION or ERROR.
 
 ### Run events (SSE)
 
 `GET /api/ai2/runs/{runId}/events` (`text/event-stream`, owner only, otherwise 404). Frames: `id:` = seq,
-`event:` = the `ChatResponse` type (`PROGRESS`, `REPLY`, `INTERACTION`, `ERROR`), `data:` = the `ChatResponse` JSON.
+`event:` = the `ChatResponse` type (`INPUT`, `PROGRESS`, `REPLY`, `INTERACTION`, `ERROR`), `data:` = the
+`ChatResponse` JSON.
 
 - The stream is opened before the POST returns, so subscribing after it replays the stream from its first event.
 - REPLY and INTERACTION are emitted after the reply / interaction is stored and the active run updated, so the client
@@ -391,24 +400,40 @@ answer / conversation full.
 {"type":"chat","requestId":"r1","text":"show me running shoes"}
 {"type":"chat","requestId":"r2","conversationId":9,"text":"and in red?"}
 {"type":"chat","requestId":"r3","conversationId":9,"interactionId":"…","answer":{"type":"approval","approved":true}}
-{"type":"subscribe","requestId":"s1","runId":"…","afterSeq":4}
+{"type":"cancel","requestId":"c1","conversationId":9}
 ```
 
 `chat` is the merged send/answer contract (`ChatRequest`): either `text` (≤ 4000; without `conversationId` a new
-conversation is created) or `conversationId + interactionId + answer`. `subscribe` re-attaches to a run's events after a
-reconnect, from the event after `afterSeq` (0 / absent = everything buffered).
+conversation is created) or `conversationId + interactionId + answer`. `cancel` stops the conversation's RUNNING run:
+it is interrupted, released with its checkpoints, nothing is stored for it, and its stream ends with ERROR `CANCELLED`
+(409 CONFLICT when nothing runs).
 
-**Server frames** are `ChatResponse`s (see above). A taken chat request gets PROGRESS `ACCEPTED` (with `requestId`,
-`conversationId` — the new one for a first message — and `runId`), then the run's events follow on the socket. A
-refused request gets an ERROR with its `requestId` and the socket stays open. An answer that no longer matches the
-open question gets ERROR `INTERACTION_CLOSED` (the paused run was abandoned). After a matching answer, the same `runId`
-resumes and its events (seq continuing) come on the same socket automatically.
+**Server frames** are `ChatResponse`s (see above). **Every socket of a user gets every event of every run of that
+user** (`RunEventBus.subscribeUser`, live only, from when the socket opened), so two devices or tabs show the same
+conversation: one sends, both see the INPUT, the progress and the reply. The sender recognises its own INPUT by
+`requestId` (and, for a first message, learns the new `conversationId` from it). Events carry `conversationId`, so a
+client shows the open conversation's events and uses the rest for its list.
+- A refused request gets an ERROR with its `requestId` on that socket only; the socket stays open.
+- An answer that no longer matches the open question gets ERROR `INTERACTION_CLOSED` (the paused run was abandoned).
+- A client that (re)connects or opens a conversation mid-run reads `GET /api/ai2/conversations/{id}`: the history
+  (a reply or question is stored before it is emitted, so nothing is lost) and `activeRun` (RUNNING: a reply is on
+  its way; PAUSED: the question to answer).
 
 **Limits.** Client frames over `max-message-bytes` (16 KB) close the socket (1009). Sends go through a
 `ConcurrentWebSocketSessionDecorator`: a client that blocks a send longer than `send-time-limit` or lets
 `send-buffer-bytes` pile up is disconnected, never the run. The server pings every `ping-interval`; a client that
-sends nothing (pongs included) for `idle-timeout` is closed. Both use Spring's 4500 ("session not reliable"). Closing a
-socket only stops delivery; runs go on and can be re-subscribed from another socket.
+sends nothing (pongs included) for `idle-timeout` is closed. Both use Spring's 4500 ("session not reliable"), and so
+does a socket the bus drops for falling too far behind. Closing a socket only stops delivery; runs go on.
+
+### The chat page (frontend)
+
+`frontend/src/app/features/chat` (route `/chat`, `/chat/:conversationId`, needs `AI_CHAT`; the "Support chat" button at
+the bottom of the side nav). `ChatSocket` (connect token → socket, reconnect with backoff) and `ChatStore` are provided
+by the page: the socket opens with the page and closes when it is left. The conversation list sits next to the app's
+side nav; the open conversation comes from the URL and its history from the detail endpoint. Progress is one
+transient line; a reply shows its text, its cards (products / orders) and, on the last reply, its suggestions;
+questions and approvals are boxes with their buttons and become "asked / answered" boxes once answered. The send button
+turns into stop while a run executes. Socket events of other conversations only refresh the list (busy dot).
 
 ---
 
@@ -479,7 +504,9 @@ user's conversation 404; delete cascades; summarization inside the run; hard lim
 
 - Item actions in the reply envelope (view, track, cancel…); token streaming of the reply text; shipments in the
   envelope once a shipment tool exists.
-- Remove the REST send/answer endpoints once the UI uses the WebSocket.
+- Remove the REST send/answer endpoints now that the UI uses the WebSocket.
+- A stopped or failed run leaves the user's message unanswered in the history, so the next run's model may still
+  answer it; store a marker (or tell the model) for such runs.
 - WebSocket hardening: a cap on open sockets per user, and a rate limit on chat frames.
 - Real data for the tools (catalog and order services), always scoped to the run's customer.
 - Pre-approval check for sensitive tools: today `cancel_order` on a delivered order asks for approval first and only

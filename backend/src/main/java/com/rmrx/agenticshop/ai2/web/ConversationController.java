@@ -1,6 +1,8 @@
 package com.rmrx.agenticshop.ai2.web;
 
 import com.rmrx.agenticshop.ai2.conversation.ConversationConflictException;
+import com.rmrx.agenticshop.ai2.conversation.ConversationDetail;
+import com.rmrx.agenticshop.ai2.conversation.store.ConversationSummary;
 import com.rmrx.agenticshop.ai2.conversation.ConversationService;
 import com.rmrx.agenticshop.ai2.conversation.RunOutcome;
 import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessage;
@@ -40,10 +42,22 @@ public class ConversationController {
         this.scope = scope;
     }
 
+    /** The caller's conversations, most recently active first. */
+    @GetMapping
+    public List<ConversationSummary> list() {
+        return conversations.list(scope.current().id());
+    }
+
+    /** One conversation: title, status, active run and timeline. */
+    @GetMapping("/{conversationId}")
+    public ConversationDetail detail(@PathVariable Long conversationId) {
+        return conversations.detail(scope.current().id(), conversationId);
+    }
+
     /** The first message: creates the conversation. */
     @PostMapping("/messages")
     public RunOutcome start(@Valid @RequestBody SendMessageRequest request) {
-        return conversations.sendMessage(scope.current().id(), null, request.text());
+        return conversations.sendMessage(scope.current().id(), null, request.text(), null);
     }
 
     @GetMapping("/{conversationId}/messages")
@@ -53,12 +67,13 @@ public class ConversationController {
 
     @PostMapping("/{conversationId}/messages")
     public RunOutcome send(@PathVariable Long conversationId, @Valid @RequestBody SendMessageRequest request) {
-        return conversations.sendMessage(scope.current().id(), conversationId, request.text());
+        return conversations.sendMessage(scope.current().id(), conversationId, request.text(), null);
     }
 
     @PostMapping("/{conversationId}/answers")
     public RunOutcome answer(@PathVariable Long conversationId, @Valid @RequestBody AnswerRequest request) {
-        return conversations.answer(scope.current().id(), conversationId, request.interactionId(), request.answer());
+        return conversations.answer(scope.current().id(), conversationId, request.interactionId(), request.answer(),
+                null);
     }
 
     @ExceptionHandler(ConversationConflictException.class)

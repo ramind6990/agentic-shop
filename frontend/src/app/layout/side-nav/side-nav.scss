@@ -15,3 +15,15 @@
     font-weight: $font-weight-semibold;
   }
 }
+
+.min-h-100 {
+  min-height: 100%;
+}
+
+// Pinned to the bottom of the nav (mt-auto), like a floating help button.
+.support-chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}

@@ -20,4 +20,10 @@ public interface RunEventBus extends RunEvents {
      * Empty if the run is unknown here.
      */
     Optional<RunSubscription> subscribe(UUID runId, long afterSeq, RunEventSubscriber subscriber);
+
+    /**
+     * Subscribes to every event of every run the user owns, from now on (no replay), e.g. all of a user's chat sockets.
+     * onClose is called only if the subscriber falls too far behind and is dropped.
+     */
+    RunSubscription subscribeUser(Long userId, RunEventSubscriber subscriber);
 }

@@ -1,0 +1,118 @@
+<aside class="chat-side">
+  <app-conversation-list
+    [conversations]="store.conversations()"
+    [activeId]="store.conversationId()"
+    [busy]="store.busyConversations()"
+  />
+</aside>
+
+<section class="chat-main" aria-labelledby="chat-title">
+  <header class="chat-header">
+    <h1 id="chat-title" class="h6 mb-0 text-truncate">{{ store.title() }}</h1>
+    @if (connection(); as label) {
+      <span class="small text-body-secondary d-flex align-items-center gap-1">
+        <span class="status-dot" aria-hidden="true"></span>{{ label }}
+      </span>
+    }
+  </header>
+
+  <div class="chat-scroll" #scroller>
+    <div class="chat-column" aria-live="polite">
+      @if (store.detailError(); as err) {
+        <div class="alert alert-danger" role="alert">{{ err.message }}</div>
+      } @else if (store.detailLoading() && store.items().length === 0) {
+        <div class="d-flex justify-content-center py-5">
+          <div class="spinner-border text-secondary" role="status">
+            <span class="visually-hidden">Loading</span>
+          </div>
+        </div>
+      } @else if (store.items().length === 0 && !store.progress()) {
+        <div class="welcome text-center text-body-secondary">
+          <div class="h4 text-body mb-2">How can I help?</div>
+          Ask about products, or about your orders: where they are, or cancelling one.
+        </div>
+      }
+
+      @for (item of store.items(); track item.key; let last = $last) {
+        @switch (item.kind) {
+          @case ('user') {
+            <div class="d-flex justify-content-end">
+              <div class="user-bubble">{{ item.text }}</div>
+            </div>
+          }
+          @case ('reply') {
+            <app-reply-view
+              [reply]="item.reply"
+              [showSuggestions]="last"
+              [suggestionsDisabled]="!store.canSend()"
+              (suggest)="store.send($event)"
+            />
+          }
+          @case ('interaction') {
+            @if (item.state === 'open') {
+              <app-interaction-box
+                [interaction]="item.interaction"
+                [disabled]="store.busy()"
+                (answer)="store.answer(item.interaction.interactionId, $event)"
+              />
+            } @else {
+              <div class="d-flex justify-content-end">
+                <app-answered-box
+                  [interaction]="item.interaction"
+                  [answer]="item.answer"
+                  [state]="item.state"
+                />
+              </div>
+            }
+          }
+          @case ('error') {
+            @if (item.stopped) {
+              <div class="small text-body-secondary fst-italic" role="status">{{ item.message }}</div>
+            } @else {
+              <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-0" role="status">
+                <span class="me-auto">{{ item.message }}</span>
+                @if (item.retryText; as text) {
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-outline-secondary"
+                    [disabled]="!store.canSend()"
+                    (click)="store.send(text)"
+                  >
+                    Try again
+                  </button>
+                }
+              </div>
+            }
+          }
+        }
+      }
+
+      @if (store.progress(); as label) {
+        <div class="progress-line" role="status">
+          <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
+          {{ label }}
+        </div>
+      }
+    </div>
+  </div>
+
+  <footer class="chat-footer">
+    <div class="chat-column py-0">
+      @if (store.notice(); as notice) {
+        <div class="small text-danger mb-1" role="alert">{{ notice }}</div>
+      }
+      @if (store.closed()) {
+        <p class="small text-body-secondary mb-1">
+          This conversation is full. <a routerLink="/chat">Start a new chat</a>.
+        </p>
+      }
+      <app-chat-composer
+        [canSend]="store.canSend()"
+        [busy]="store.busy()"
+        [canStop]="store.canStop()"
+        (send)="store.send($event)"
+        (stop)="store.stop()"
+      />
+    </div>
+  </footer>
+</section>

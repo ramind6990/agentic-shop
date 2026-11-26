@@ -8,6 +8,8 @@ import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessageStore;
 import com.rmrx.agenticshop.ai2.conversation.message.InteractionStatus;
 import com.rmrx.agenticshop.ai2.conversation.store.Conversation;
 import com.rmrx.agenticshop.ai2.conversation.store.ConversationStore;
+import com.rmrx.agenticshop.ai2.conversation.store.ConversationSummary;
+import com.rmrx.agenticshop.ai2.events.ChatResponse;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.app.common.exception.NotFoundException;
@@ -51,7 +53,7 @@ public class ConversationService {
      * A new message: starts a run (abandoning a paused one first). Without a conversation id, a new conversation is
      * created for it.
      */
-    public RunOutcome sendMessage(Long userId, Long conversationId, String text) {
+    public RunOutcome sendMessage(Long userId, Long conversationId, String text, String requestId) {
         Conversation conversation = conversationId == null ? conversations.create(userId) : owned(conversationId, userId);
         if (conversation.status() == Conversation.Status.CLOSED) {
             throw new ConversationConflictException("This conversation is full; please start a new one.");
@@ -67,14 +69,16 @@ public class ConversationService {
         messages.appendUser(conversation.id(), run.runId(), text);
         conversations.touch(conversation.id());
         RunContext context = new RunContext(userId, conversation.id(), run.runId());
-        return launcher.launch(run, () -> runner.start(context, List.of(UserMessage.from(text))));
+        return launcher.launch(run, requestId, ChatResponse.Input.text(text),
+                () -> runner.start(context, List.of(UserMessage.from(text))));
     }
 
     /**
      * The answer to the pending question or approval: resumes the run when it matches; otherwise abandons the run
      * and starts nothing.
      */
-    public RunOutcome answer(Long userId, Long conversationId, UUID interactionId, HumanAnswer answer) {
+    public RunOutcome answer(Long userId, Long conversationId, UUID interactionId, HumanAnswer answer,
+                             String requestId) {
         owned(conversationId, userId);
         ActiveRun current = activeRuns.find(conversationId)
                 .orElseThrow(() -> new ConversationConflictException("There is no question to answer."));
@@ -86,12 +90,38 @@ public class ConversationService {
             ActiveRun resumed = activeRuns.tryResume(conversationId, interactionId)
                     .orElseThrow(() -> new ConversationConflictException("This question was already answered."));
             messages.resolveInteraction(interactionId, InteractionStatus.of(answer), answer);
-            return launcher.launch(resumed,
+            return launcher.launch(resumed, requestId, ChatResponse.Input.answer(pending, answer),
                     () -> runner.resume(conversationId, resumed.runId(), pending.callId(), answer));
         }
         return activeRuns.takePaused(conversationId)
                 .map(this::abandon)
                 .orElseThrow(() -> new ConversationConflictException("This question was already answered."));
+    }
+
+    /** Stops the conversation's running run (its stream ends with ERROR CANCELLED); 409 when nothing is running. */
+    public void cancel(Long userId, Long conversationId) {
+        owned(conversationId, userId);
+        ActiveRun current = activeRuns.find(conversationId)
+                .filter(run -> run.status() == ActiveRun.Status.RUNNING)
+                .orElseThrow(() -> new ConversationConflictException("Nothing is running in this conversation."));
+        if (!launcher.cancel(current.runId())) {
+            throw new ConversationConflictException("Nothing is running in this conversation.");
+        }
+    }
+
+    /** The user's conversations, most recently active first. */
+    public List<ConversationSummary> list(Long userId) {
+        return conversations.listOwned(userId);
+    }
+
+    /** One conversation with its timeline and its active run (to show a running or paused run when reopened). */
+    public ConversationDetail detail(Long userId, Long conversationId) {
+        ConversationSummary summary = conversations.summaryOwned(conversationId, userId)
+                .orElseThrow(() -> new NotFoundException("Conversation", conversationId));
+        ConversationDetail.ActiveRunView activeRun = activeRuns.find(conversationId)
+                .map(r -> new ConversationDetail.ActiveRunView(r.runId(), r.status(), r.pendingInteraction()))
+                .orElse(null);
+        return new ConversationDetail(summary, activeRun, messages.list(conversationId));
     }
 
     /** The chat timeline, oldest first. */

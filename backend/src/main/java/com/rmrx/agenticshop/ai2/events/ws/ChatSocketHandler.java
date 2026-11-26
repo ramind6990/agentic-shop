@@ -6,9 +6,8 @@ import com.rmrx.agenticshop.ai2.conversation.RunOutcome;
 import com.rmrx.agenticshop.ai2.events.ChatResponse;
 import com.rmrx.agenticshop.ai2.events.ChatResponse.ErrorCode;
 import com.rmrx.agenticshop.ai2.events.RunEventBus;
-import com.rmrx.agenticshop.ai2.events.sse.SseRunEventTransport;
+import com.rmrx.agenticshop.ai2.events.ws.ClientMessage.CancelRequest;
 import com.rmrx.agenticshop.ai2.events.ws.ClientMessage.ChatRequest;
-import com.rmrx.agenticshop.ai2.events.ws.ClientMessage.SubscribeRequest;
 import com.rmrx.agenticshop.app.common.exception.NotFoundException;
 import jakarta.annotation.PreDestroy;
 import jakarta.validation.ConstraintViolation;
@@ -27,8 +26,6 @@ import tools.jackson.databind.ObjectWriter;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -38,10 +35,11 @@ import java.util.stream.Collectors;
 
 /**
  * The ai2 chat socket. The handshake already authenticated the user ({@link WsHandshakeInterceptor}); every frame acts
- * as that user only. A {@code chat} frame sends a message or answers the paused run ({@link ConversationService}, which
- * checks the conversation's ownership), is acknowledged with a PROGRESS {@code ACCEPTED}, and the started run's events
- * follow on this socket. A {@code subscribe} frame follows a run the user owns. Everything sent is a
- * {@link ChatResponse}; a refused frame gets an ERROR with its requestId and the socket stays open.
+ * as that user only. Each socket gets every event of every run of its user, so all the user's devices see the same
+ * conversation. A {@code chat} frame sends a message or answers the paused run ({@link ConversationService}, which
+ * checks the conversation's ownership); the run's INPUT event (with the frame's requestId) and the rest of its events
+ * follow. A {@code cancel} frame stops the conversation's running run. Everything sent is a {@link ChatResponse}; a
+ * refused frame gets an ERROR with its requestId, on this socket only, and the socket stays open.
  */
 @Component("ai2ChatSocketHandler")
 public class ChatSocketHandler extends TextWebSocketHandler {
@@ -81,9 +79,9 @@ public class ChatSocketHandler extends TextWebSocketHandler {
             session.close(CloseStatus.POLICY_VIOLATION); // never without the handshake interceptor
             return;
         }
-        ClientSession client = new ClientSession(session, user, writer, bus, props);
+        ClientSession client = new ClientSession(session, user, writer, props);
         clients.put(session.getId(), client);
-        client.start(timers, io);
+        client.start(bus, timers, io);
     }
 
     @Override
@@ -96,7 +94,7 @@ public class ChatSocketHandler extends TextWebSocketHandler {
             request = reader.readValue(message.getPayload());
         } catch (JacksonException e) {
             log.debug("ai2 socket {}: unreadable frame: {}", session.getId(), e.getOriginalMessage());
-            client.refuse(null, ErrorCode.BAD_REQUEST, "Not a valid message: expected a JSON object of type chat or subscribe.");
+            client.refuse(null, ErrorCode.BAD_REQUEST, "Not a valid message: expected a JSON object of type chat or cancel.");
             return;
         }
         Set<ConstraintViolation<ClientMessage>> violations = validator.validate(request);
@@ -108,7 +106,7 @@ public class ChatSocketHandler extends TextWebSocketHandler {
         try {
             switch (request) {
                 case ChatRequest chat -> chat(client, chat);
-                case SubscribeRequest subscribe -> subscribe(client, subscribe);
+                case CancelRequest cancel -> conversations.cancel(client.userId(), cancel.conversationId());
             }
         } catch (ConversationConflictException e) {
             client.refuse(request.requestId(), ErrorCode.CONFLICT, e.getMessage());
@@ -120,30 +118,15 @@ public class ChatSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    /** A started run announces itself with INPUT (to all the user's sockets); only an abandoned answer is told here. */
     private void chat(ClientSession client, ChatRequest chat) {
         RunOutcome outcome = chat.answering()
-                ? conversations.answer(client.userId(), chat.conversationId(), chat.interactionId(), chat.answer())
-                : conversations.sendMessage(client.userId(), chat.conversationId(), chat.text());
-        switch (outcome) {
-            case RunOutcome.Running running -> {
-                client.send(ChatResponse.accepted(chat.requestId(), running.conversationId(), running.runId()));
-                client.follow(running.runId(), 0);
-            }
-            case RunOutcome.Abandoned abandoned -> client.send(ChatResponse.refused(chat.requestId(),
-                    abandoned.conversationId(), abandoned.runId(), ErrorCode.INTERACTION_CLOSED,
-                    "That question is no longer open; send a new message.", false));
-            case RunOutcome other -> throw new IllegalStateException("unexpected outcome " + other);
-        }
-    }
-
-    private void subscribe(ClientSession client, SubscribeRequest subscribe) {
-        Optional<Long> owner = bus.ownerOf(subscribe.runId());
-        if (owner.isPresent() && !Objects.equals(owner.get(), client.userId())) {
-            throw new NotFoundException("Run", subscribe.runId());
-        }
-        long afterSeq = subscribe.afterSeq() == null ? 0 : subscribe.afterSeq();
-        if (owner.isEmpty() || !client.follow(subscribe.runId(), afterSeq)) {
-            client.refuse(subscribe.requestId(), ErrorCode.RUN_NOT_LIVE, SseRunEventTransport.NOT_LIVE_MESSAGE);
+                ? conversations.answer(client.userId(), chat.conversationId(), chat.interactionId(), chat.answer(),
+                chat.requestId())
+                : conversations.sendMessage(client.userId(), chat.conversationId(), chat.text(), chat.requestId());
+        if (outcome instanceof RunOutcome.Abandoned abandoned) {
+            client.send(ChatResponse.refused(chat.requestId(), abandoned.conversationId(), abandoned.runId(),
+                    ErrorCode.INTERACTION_CLOSED, "That question is no longer open; send a new message.", false));
         }
     }
 

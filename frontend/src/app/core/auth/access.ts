@@ -17,6 +17,7 @@ export const AREA_PERMISSIONS: Record<string, Permission> = {
   tickets: 'TICKETS_READ',
   flags: 'FLAGS_READ',
   documents: 'DOCUMENTS_READ',
+  chat: 'AI_CHAT',
 };
 
 /** The first path segment of router commands or a URL: ['/customers', 5] and '/customers/5' give 'customers'. */
