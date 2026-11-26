@@ -16,7 +16,7 @@ public interface BrandRepository extends JpaRepository<Brand, Long> {
             select b from Brand b
             where lower(b.name) like lower(concat('%', :q, '%'))
               and exists (select 1 from Product p
-                          where p.brand = b and p.status = com.rmrx.agenticshop.catalog.entity.ProductStatus.ACTIVE
+                          where p.brand = b and p.status = com.rmrx.agenticshop.app.catalog.entity.ProductStatus.ACTIVE
                             and p.category.path like concat(:path, '%'))
             """)
     Page<Brand> findInCategory(@Param("q") String q, @Param("path") String categoryPath, Pageable pageable);

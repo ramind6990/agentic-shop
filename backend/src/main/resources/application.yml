@@ -1,6 +1,13 @@
 spring:
   application:
     name: agenticshop
+  # Local secrets (OPENAI_API_KEY, ...) from the project-root .env (git-ignored), KEY=VALUE lines.
+  # Both paths are optional: ../.env when started from backend/, .env when started from the repo root.
+  # Real environment variables still win over these values.
+  config:
+    import:
+      - optional:file:../.env[.properties]
+      - optional:file:.env[.properties]
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5438/agenticshop}
     username: ${DB_USER:agenticshop}
@@ -43,8 +50,8 @@ app:
       log-requests: false
       log-responses: false
     chat:
-      model: ${AI_CHAT_MODEL:gpt-5-mini}
-      summary-model: ${AI_SUMMARY_MODEL:gpt-5-nano}
+      model: ${AI_CHAT_MODEL:gpt-6-luna}
+      summary-model: ${AI_SUMMARY_MODEL:gpt-6-luna}
       max-output-tokens: 4000
       timeout: 60s
     embedding:
