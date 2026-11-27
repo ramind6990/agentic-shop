@@ -1,8 +1,8 @@
 package com.rmrx.agenticshop.ai2.contract.reply;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
-import com.rmrx.agenticshop.ai2.contract.tool.response.OrderItem;
-import com.rmrx.agenticshop.ai2.contract.tool.response.ProductItem;
+import com.rmrx.agenticshop.ai2.contract.tool.response.order.OrderItem;
+import com.rmrx.agenticshop.ai2.contract.tool.response.product.ProductItem;
 import com.rmrx.agenticshop.ai2.graph.agent.response.ResponseStatus;
 import com.rmrx.agenticshop.ai2.graph.agent.response.SuggestionReply;
 

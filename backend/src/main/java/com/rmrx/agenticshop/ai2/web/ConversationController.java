@@ -57,7 +57,7 @@ public class ConversationController {
     /** The first message: creates the conversation. */
     @PostMapping("/messages")
     public RunOutcome start(@Valid @RequestBody SendMessageRequest request) {
-        return conversations.sendMessage(scope.current().id(), null, request.text(), null);
+        return conversations.sendMessage(scope.current(), null, request.text(), null);
     }
 
     @GetMapping("/{conversationId}/messages")
@@ -67,7 +67,7 @@ public class ConversationController {
 
     @PostMapping("/{conversationId}/messages")
     public RunOutcome send(@PathVariable Long conversationId, @Valid @RequestBody SendMessageRequest request) {
-        return conversations.sendMessage(scope.current().id(), conversationId, request.text(), null);
+        return conversations.sendMessage(scope.current(), conversationId, request.text(), null);
     }
 
     @PostMapping("/{conversationId}/answers")

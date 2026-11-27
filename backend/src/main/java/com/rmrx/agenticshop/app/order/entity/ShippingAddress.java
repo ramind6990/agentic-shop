@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.app.order.entity;
 
+import com.rmrx.agenticshop.app.identity.entity.Address;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import lombok.AccessLevel;
@@ -32,4 +33,17 @@ public class ShippingAddress {
 
     @Column(name = "ship_country", nullable = false)
     private String country;
+
+    /** Snapshot of a saved address of the customer. */
+    public static ShippingAddress of(Address saved) {
+        ShippingAddress a = new ShippingAddress();
+        a.recipient = saved.getRecipient();
+        a.line1 = saved.getLine1();
+        a.line2 = saved.getLine2();
+        a.city = saved.getCity();
+        a.region = saved.getRegion();
+        a.postalCode = saved.getPostalCode();
+        a.country = saved.getCountry();
+        return a;
+    }
 }

@@ -4,6 +4,7 @@ import com.rmrx.agenticshop.ai2.events.ChatResponse;
 import com.rmrx.agenticshop.ai2.events.RunEventBus;
 import com.rmrx.agenticshop.ai2.events.RunEventSubscriber;
 import com.rmrx.agenticshop.ai2.events.RunSubscription;
+import com.rmrx.agenticshop.app.security.CurrentUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.socket.CloseStatus;
@@ -64,6 +65,10 @@ final class ClientSession implements RunEventSubscriber {
                 scheduler.schedule(() -> io.execute(() -> close(EXPIRED)), untilExpiry, TimeUnit.MILLISECONDS),
                 scheduler.scheduleAtFixedRate(() -> io.execute(this::ping), pingMs, pingMs, TimeUnit.MILLISECONDS));
         if (closed) release();
+    }
+
+    CurrentUser user() {
+        return user.user();
     }
 
     Long userId() {

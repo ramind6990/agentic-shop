@@ -2,11 +2,11 @@ package com.rmrx.agenticshop.ai2.tools;
 
 import com.rmrx.agenticshop.ai2.events.AgentEventPublisher;
 import com.rmrx.agenticshop.ai2.events.RunEvents;
+import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import org.springframework.stereotype.Component;
 
 import java.util.Optional;
-import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
@@ -27,9 +27,9 @@ public class ToolProgress {
         this.events = events;
     }
 
-    public ExecutedCall track(ToolExecutionRequest call, UUID runId, Supplier<ExecutedCall> execution) {
-        Optional<AgentEventPublisher> publisher = events.publisher(runId);
-        publisher.ifPresent(p -> p.toolStarted(call.name(), label(call)));
+    public ExecutedCall track(ToolExecutionRequest call, RunContext context, Supplier<ExecutedCall> execution) {
+        Optional<AgentEventPublisher> publisher = events.publisher(context.runId());
+        publisher.ifPresent(p -> p.toolStarted(call.name(), label(call, context)));
         long start = System.nanoTime();
         ExecutedCall executed = execution.get();
         long durationMs = (System.nanoTime() - start) / 1_000_000;
@@ -38,9 +38,9 @@ public class ToolProgress {
         return executed;
     }
 
-    private String label(ToolExecutionRequest call) {
+    private String label(ToolExecutionRequest call, RunContext context) {
         try {
-            return registry.label(call).orElse(DEFAULT_LABEL);
+            return registry.catalog(context).label(call).orElse(DEFAULT_LABEL);
         } catch (RuntimeException e) {
             return DEFAULT_LABEL;
         }

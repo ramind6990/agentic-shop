@@ -1,6 +1,9 @@
 package com.rmrx.agenticshop.ai2.model;
 
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
+import com.rmrx.agenticshop.ai2.tools.Audience;
+import com.rmrx.agenticshop.ai2.tools.ToolPaging;
+import com.rmrx.agenticshop.app.returns.service.RefundLimits;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,16 +15,21 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The ai2 agent's system prompt. The instructions are versioned files, {@code prompts/ai2/system-<version>.md}; the
- * version comes from {@code app.ai2.prompt.version}. The file is loaded once at startup and its
- * {@code {{placeholders}}} are filled from {@link Ai2ReplyProperties} (an unknown placeholder fails startup). Each
- * model call then adds what changes per call: today's date and, on the run's last allowed call, the note that tools
- * are off.
+ * The ai2 agent's system prompt, one per {@link Audience}. The instructions are versioned files chosen by
+ * {@code app.ai2.prompt.version}: {@code prompts/ai2/<version>/base.md} with the audience's
+ * {@code customer.md} / {@code staff.md} inserted at its {@code {{audience}}} placeholder, or (older versions) one
+ * file {@code prompts/ai2/system-<version>.md} for everyone. The files are loaded once at startup and their
+ * {@code {{placeholders}}} filled from {@link Ai2ReplyProperties} and the paging limits (an unknown placeholder fails
+ * startup). Each model call then adds what changes per call: today's date, who the user is and, on the run's last
+ * allowed call, the note that tools are off.
  */
 @Component
 public class SystemPrompt {
@@ -35,7 +43,7 @@ public class SystemPrompt {
             not be looked up, say so in the text.""";
 
     private final String version;
-    private final String instructions;
+    private final Map<Audience, String> instructions = new EnumMap<>(Audience.class);
     private final Clock clock;
 
     /** The constructor Spring uses (the class has two, so it must be marked). */
@@ -46,30 +54,45 @@ public class SystemPrompt {
 
     SystemPrompt(Ai2PromptProperties prompt, Ai2ReplyProperties reply, Clock clock) {
         this.version = prompt.version();
-        this.instructions = fill(load(location(version)), Map.of(
+        Map<String, Object> values = new HashMap<>(Map.of(
                 "maxTextLength", reply.maxTextLength(),
                 "maxSuggestions", reply.maxSuggestions(),
-                "maxSuggestionLabelLength", reply.maxSuggestionLabelLength()));
+                "maxSuggestionLabelLength", reply.maxSuggestionLabelLength(),
+                "pageSize", ToolPaging.PAGE_SIZE,
+                "maxPage", ToolPaging.MAX_PAGE));
+        for (Audience audience : Audience.values()) instructions.put(audience, compose(audience, values));
         this.clock = clock;
         log.info("ai2 system prompt {} loaded", version);
     }
 
-    /** The prompt version in use, e.g. {@code v1}. */
+    /** The prompt version in use, e.g. {@code v2}. */
     public String version() {
         return version;
     }
 
     /** The system message text for one model call of the run. */
     public String render(RunContext context, boolean toolsOn) {
-        StringBuilder prompt = new StringBuilder(instructions)
-                .append("\n\n# Today\n").append(LocalDate.now(clock));
-        // TODO the customer's name / role and other per-user facts (needs them in RunContext)
+        StringBuilder prompt = new StringBuilder(instructions.get(context.audience().orElse(Audience.CUSTOMER)))
+                .append("\n\n# Today\n").append(LocalDate.now(clock))
+                .append("\n\n# The user\n").append(userFacts(context));
         if (!toolsOn) prompt.append("\n\n").append(TOOLS_OFF_NOTE);
         return prompt.toString();
     }
 
-    static String location(String version) {
-        return "prompts/ai2/system-" + version + ".md";
+    private static String userFacts(RunContext context) {
+        if (context.audience().orElse(Audience.CUSTOMER) == Audience.CUSTOMER) return "A signed-in customer.";
+        String limit = RefundLimits.capFor(context.role()).map(cap -> "at most " + cap + " per refund")
+                .orElse("not limited by role");
+        return "A support agent with role " + context.role() + "; refunds they issue are " + limit + ".";
+    }
+
+    private String compose(Audience audience, Map<String, Object> values) {
+        String single = "prompts/ai2/system-" + version + ".md";
+        if (new ClassPathResource(single).exists()) return fill(load(single), values);
+        String dir = "prompts/ai2/" + version + "/";
+        Map<String, Object> withAudience = new HashMap<>(values);
+        withAudience.put("audience", fill(load(dir + audience.name().toLowerCase(Locale.ROOT) + ".md"), values));
+        return fill(load(dir + "base.md"), withAudience);
     }
 
     private static String fill(String template, Map<String, Object> values) {

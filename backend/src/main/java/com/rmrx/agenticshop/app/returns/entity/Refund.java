@@ -47,4 +47,23 @@ public class Refund extends BaseEntity {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    public static Refund issue(CustomerOrder order, ReturnRequest returnRequest, BigDecimal amount, String reason,
+                               AppUser issuedBy, String idempotencyKey, Instant at) {
+        Refund r = new Refund();
+        r.order = order;
+        r.returnRequest = returnRequest;
+        r.amount = amount;
+        r.reason = reason.length() > 200 ? reason.substring(0, 200) : reason;
+        r.status = RefundStatus.ISSUED;
+        r.issuedBy = issuedBy;
+        r.idempotencyKey = idempotencyKey;
+        r.createdAt = at;
+        return r;
+    }
+
+    /** Paid back or about to be: counts against what can still be refunded on the order. */
+    public boolean countsAsRefunded() {
+        return status != RefundStatus.FAILED;
+    }
 }

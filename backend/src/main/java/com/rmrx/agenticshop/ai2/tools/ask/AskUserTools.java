@@ -2,6 +2,8 @@ package com.rmrx.agenticshop.ai2.tools.ask;
 
 import com.rmrx.agenticshop.ai2.tools.AgentToolSet;
 import com.rmrx.agenticshop.ai2.tools.AskUser;
+import com.rmrx.agenticshop.ai2.tools.Audience;
+import com.rmrx.agenticshop.ai2.tools.ToolAudience;
 import com.rmrx.agenticshop.ai2.tools.Sensitive;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
@@ -19,6 +21,7 @@ import java.util.List;
  * it into {@code ask_choice} with two options.
  */
 @Component
+@ToolAudience({Audience.CUSTOMER, Audience.STAFF})
 public class AskUserTools implements AgentToolSet {
 
     public static final String ASK_CHOICE = "ask_choice";

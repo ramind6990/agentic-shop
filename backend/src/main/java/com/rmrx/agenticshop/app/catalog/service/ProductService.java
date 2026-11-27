@@ -182,6 +182,13 @@ public class ProductService {
                 mapper.toStock(inventory));
     }
 
+    /** A product shoppers may see: ACTIVE or DELISTED (still referenced by past orders); a DRAFT is not found. */
+    public ProductDetail getPublished(Long id) {
+        ProductDetail detail = get(id);
+        if (detail.status() == ProductStatus.DRAFT) throw new NotFoundException("Product", id);
+        return detail;
+    }
+
     /** Product attribute values, ordered like the category's attribute list. */
     private List<ProductAttributeDto> attributes(Product p) {
         Map<Long, List<ProductAttributeValue>> byAttribute = attributeValueRepository.findByProductId(p.getId())

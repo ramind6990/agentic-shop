@@ -123,7 +123,7 @@ public class ChatSocketHandler extends TextWebSocketHandler {
         RunOutcome outcome = chat.answering()
                 ? conversations.answer(client.userId(), chat.conversationId(), chat.interactionId(), chat.answer(),
                 chat.requestId())
-                : conversations.sendMessage(client.userId(), chat.conversationId(), chat.text(), chat.requestId());
+                : conversations.sendMessage(client.user(), chat.conversationId(), chat.text(), chat.requestId());
         if (outcome instanceof RunOutcome.Abandoned abandoned) {
             client.send(ChatResponse.refused(chat.requestId(), abandoned.conversationId(), abandoned.runId(),
                     ErrorCode.INTERACTION_CLOSED, "That question is no longer open; send a new message.", false));

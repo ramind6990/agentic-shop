@@ -6,8 +6,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 /**
  * Which system prompt the ai2 agent uses ({@code app.ai2.prompt}).
  *
- * @param version the prompt file {@code prompts/ai2/system-<version>.md}, e.g. {@code v1}
+ * @param version the prompt version, e.g. {@code v2} (see {@link SystemPrompt})
  */
 @ConfigurationProperties("app.ai2.prompt")
-public record Ai2PromptProperties(@DefaultValue("v1") String version) {
+public record Ai2PromptProperties(@DefaultValue("v2") String version) {
 }

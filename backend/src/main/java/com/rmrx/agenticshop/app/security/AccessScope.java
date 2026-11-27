@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /**
  * Row-level access for the signed-in user, applied by services after the endpoint's permission check.
@@ -20,10 +21,27 @@ import java.util.Objects;
 @Component
 public class AccessScope {
 
+    /** The user work runs for outside a request thread (e.g. an agent's tool call), bound by {@link #runAs}. */
+    private static final ScopedValue<CurrentUser> ACTING_USER = ScopedValue.newInstance();
+
     public CurrentUser current() {
+        if (ACTING_USER.isBound()) return ACTING_USER.get();
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth instanceof JwtAuthenticationToken jwt) return TokenService.toCurrentUser(jwt.getToken());
         throw new IllegalStateException("No signed-in user");
+    }
+
+    /**
+     * Runs {@code work} as {@code user}: every scope check inside sees that user, exactly as for their own request
+     * (an agent acts with the permissions of the user it works for, never more).
+     */
+    public <T> T runAs(CurrentUser user, Supplier<T> work) {
+        return ScopedValue.where(ACTING_USER, user).call(work::get);
+    }
+
+    /** Throws 404 unless the caller is staff (support, admin); others must not learn that the action exists. */
+    public void requireStaff(String what) {
+        if (!current().role().isStaff()) throw new NotFoundException(what, "staff only");
     }
 
     /** The customer filter to apply: the caller's own id for a CUSTOMER, otherwise the requested one. */

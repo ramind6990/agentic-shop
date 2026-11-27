@@ -6,5 +6,7 @@ public enum ReturnStatus {
     REJECTED,
     RECEIVED,
     DISPUTED,
-    CLOSED
+    CLOSED,
+    /** Withdrawn by the customer before the seller acted on it. */
+    CANCELLED
 }

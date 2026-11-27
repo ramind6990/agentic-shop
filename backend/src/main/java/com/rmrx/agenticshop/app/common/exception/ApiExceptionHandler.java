@@ -26,6 +26,11 @@ public class ApiExceptionHandler {
         return problem(HttpStatus.BAD_REQUEST, "Bad request", ex.getMessage());
     }
 
+    @ExceptionHandler(RuleViolationException.class)
+    ProblemDetail ruleViolation(RuleViolationException ex) {
+        return problem(HttpStatus.CONFLICT, "Not allowed", ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     ProblemDetail typeMismatch(MethodArgumentTypeMismatchException ex) {
         return problem(HttpStatus.BAD_REQUEST, "Bad request",

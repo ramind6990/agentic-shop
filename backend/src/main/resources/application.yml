@@ -114,6 +114,8 @@ app:
   # the ai2 agent's own model (independent of app.ai), called through OpenAI's Responses API (/v1/responses);
   # without an API key the app starts, but ai2 runs fail
   ai2:
+    # Dev-only /api/ai2/dev/tools endpoints (run one tool without the model). Never enable in production.
+    dev-endpoints: ${AI2_DEV_ENDPOINTS:false}
     model:
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
@@ -124,9 +126,9 @@ app:
       timeout: 60s
       log-requests: false
       log-responses: false
-    # system prompt file: prompts/ai2/system-<version>.md
+    # system prompt: prompts/ai2/<version>/base.md + customer.md / staff.md (or prompts/ai2/system-<version>.md)
     prompt:
-      version: ${AI2_PROMPT_VERSION:v1}
+      version: ${AI2_PROMPT_VERSION:v2}
     # limits of the final reply: told to the model in the prompt and enforced by the output validation
     reply:
       max-text-length: 600

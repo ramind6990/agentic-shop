@@ -25,4 +25,8 @@ public final class TicketDtos {
     public record MessageDto(Long id, AuthorType authorType, Ref author, String body, boolean internal,
                              Instant createdAt) {
     }
+
+    /** A hand-off: the ticket, and whether the request was added to an already open ticket instead of a new one. */
+    public record TicketOpening(TicketDetail ticket, boolean addedToOpenTicket) {
+    }
 }

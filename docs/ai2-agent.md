@@ -55,13 +55,13 @@ answered). A conversation has at most one active run at a time.
 | `ai2.graph.agent.response` | `AgentResponse`, `DisplayReference`, `SuggestionReply`, `ResponseStatus` (the model's final reply) |
 | `ai2.graph.agent.pending` | `PendingInteraction` (what a paused run waits for) |
 | `ai2.contract.interaction` | `HumanAnswer`, `InteractionJson` |
-| `ai2.contract.tool` | `ToolResponse`, `ToolResult` |
-| `ai2.contract.tool.response` | product and order response contracts |
-| `ai2.contract.reply` | `ReplyEnvelope`, `BlockType`, `ReplyEnvelopes` (agent response → envelope) |
-| `ai2.tools` | `ToolRegistry`, `ToolCallExecutor`, `ToolProgress`, annotations (`@ToolLabel`, `@Sensitive`, `@AskUser`), `ToolCategory` … |
+| `ai2.contract.domain` | ai2's own enums and values (`OrderStatus`, `ReturnReason`, `TicketStatus`, `Address`, `Verdict` …); never `app` classes |
+| `ai2.contract.tool` | `ToolResponse`, `ToolResult`, `PageInfo`, `Texts` |
+| `ai2.contract.tool.response.*` | responses per family: `product`, `order`, `shipment`, `returns`, `customer`, `support` |
+| `ai2.contract.reply` | `ReplyEnvelope`, `BlockType`, `ReplyEnvelopes` (agent response → envelope; `displayable`) |
+| `ai2.tools` | `ToolRegistry` (one `ToolCatalog` per `Audience`), `ToolDefinitions`, `ToolCallExecutor` (runs as the user), `ToolProgress`, `ToolPaging`, `ToolDates`, annotations (`@ToolAudience`, `@ToolLabel`, `@Sensitive`, `@AskUser`) |
 | `ai2.tools.ask` | `AskUserTools` (`ask_choice`, `ask_input`, `ask_yes_no`) + their argument records |
-| `ai2.tools.product` | `ProductTools` (`search_products`, mock data) |
-| `ai2.tools.order` | `OrderTools` (`search_orders`, `cancel_order`, mock data) |
+| `ai2.tools.{product,order,customer,shipment,returns,support}` | `*Tools` (thin `@Tool` methods) + MapStruct `*ToolMapper` (domain DTO → contract) |
 | `ai2.model` | `Ai2ModelConfig` (the `ai2ChatModel` bean), `SystemPrompt`, `Ai2ModelProperties`, `Ai2PromptProperties`, `Ai2ReplyProperties` |
 | `ai2.conversation` | `ConversationService`, `RunLauncher`, `GraphRunner`, `RunOutcome`, `ConversationConflictException` |
 | `ai2.events` | `ChatResponse` (the one outgoing message), `AgentEventPublisher`, `RunEvents` / `RunEventBus`, `InMemoryRunEventBus`, `Ai2EventProperties` |
@@ -72,7 +72,7 @@ answered). A conversation has at most one active run at a time.
 | `ai2.activerun` | `ActiveRun`, `ActiveRunRegistry` |
 | `ai2.checkpointer` | `JdbcCheckpointSaver` |
 | `ai2.memory` | `HistoryProvider`, `ConversationSummarizer`, `HistoryProjection`, `ConversationMemoryStore`, `Ai2MemoryProperties` |
-| `ai2.web` | `ConversationController`, `RunEventsController`, `WsConnectTokenController`, `SendMessageRequest`, `AnswerRequest` |
+| `ai2.web` | `ConversationController`, `RunEventsController`, `WsConnectTokenController`, `DevToolsController` (dev only), `SendMessageRequest`, `AnswerRequest` |
 
 ---
 
@@ -102,7 +102,7 @@ START → modelCall → outputValidation ─┬─ RETRY ───────�
 ### Output validation
 
 For **tool calls**:
-- unknown tool name → error result per call, retry;
+- unknown tool name (including a tool of another audience) → error result per call, retry;
 - the run's budget is used up → FAILED;
 - calls are sorted into a `StepPlan` (read / ask / sensitive / deferred) by tool category;
 - **mixing rule**: when a step contains an ask, its sensitive calls are deferred with the result "Not executed: call it
@@ -110,7 +110,8 @@ For **tool calls**:
 
 For a **final answer** (text without tool calls): parse JSON into `AgentResponse`, then check status present, text
 non-blank and ≤ `max-text-length`, ≤ `max-suggestions` suggestions with labels ≤ `max-suggestion-label-length`, and
-that `finalReferenceToDisplay.ref` is a ref of this run whose `selectedItemIdentifiers` are items of that result.
+that `finalReferenceToDisplay.ref` is a ref of this run whose `selectedItemIdentifiers` are items of that result, and
+that the result can be shown at all (`ReplyEnvelopes.displayable`: products and orders only).
 
 Failure → feedback to the model (an error result per tool call, or a system message for a final answer) and RETRY;
 after 2 consecutive failures, or when the model-call budget is used up, FAILED with a fallback reply.
@@ -173,8 +174,9 @@ response and the tool result its `finalReferenceToDisplay.ref` names:
 ```
 
 - `blockType`: `NONE | PRODUCT_LIST | ORDER_LIST`; only the matching list (`productList` / `orderList`, full item data)
-  is present. Blocks are lists of items only: any other displayed result (e.g. an order cancellation) gives `NONE`
-  and the text says what happened.
+  is present. Product and order lists, and a single product or order (`get_product` / `get_order`, as a one-card
+  list), become blocks. Any other result cannot be shown: the model reads "not shown to the user" on its ref line and
+  writes the facts in the text.
 - Items are narrowed to `selectedItemIdentifiers` (empty = all), with the ids of `ToolResponse.itemIdentifiers()`.
 - The timeline still stores the raw response and `ReplyDisplay` (unchanged).
 
@@ -207,16 +209,79 @@ returns a `ToolResponse`.
 - `ToolResponse.itemIdentifiers()` lists the selectable items (product ids, order numbers) for validation.
 - The executor never throws: unknown tool, ask tool or a failing tool becomes an error result.
 
-### Tools today (mock data)
+### Audiences and identity
 
-| Tool | Category | Notes |
-|---|---|---|
-| `search_products(query)` | READ | 3 running shoes |
-| `search_orders(statuses?)` | READ | 4 orders (WE45, WE51, WE32, WE18), newest first |
-| `cancel_order(orderNumber, reason?)` | SENSITIVE | "Do you want to cancel order {orderNumber}?"; fails for orders not PLACED/PAID |
-| `ask_choice(question, options, multiSelect)` | ASK | 2–6 options `{value, label, description}` |
-| `ask_input(question)` | ASK | one free-text answer |
-| `ask_yes_no(question)` | ASK | only to confirm understanding, never to ask permission |
+- Every tool has `@ToolAudience` (on the method or its class): `CUSTOMER` (role CUSTOMER) or `STAFF` (SUPPORT_T1,
+  SUPPORT_T2, ADMIN). `ToolRegistry` builds one `ToolCatalog` per audience; a run sees only its user's catalog (offered
+  specs, validation, execution). One name may have a customer and a staff variant with different parameters
+  (`search_orders`, `search_returns`, `search_refunds`, `get_addresses`).
+- `RunContext` carries the user's role and seller id. `ToolCallExecutor` runs each call inside
+  `AccessScope.runAs(caller)`, so the shop's services apply that user's scope exactly as for their own requests
+  (customers only ever see their own rows). Refund limits per role are enforced by the domain, not by tool selection.
+- Tool methods read a per-call key (`ToolCallExecutor.CALL_KEY`, `runId:callId`) from an `InvocationParameters`
+  parameter; `issue_refund` uses it as the refund's idempotency key.
+
+### Paging
+
+`ToolPaging`: pages of 10, `page` 1-based, at most 5. Page 6+ returns an error result telling the model to narrow the
+search; on page 5 with more results, `PageInfo.note` says so. Every list response carries `PageInfo(total, page,
+hasMore, note)`. The prompt states the rule.
+
+### Contracts and mapping
+
+Tool parameters and responses use only ai2 types: enums and values in `contract/domain`, responses in
+`contract/tool/response/{product,order,shipment,returns,customer}`. Each tool family has a MapStruct
+`<Family>ToolMapper` from the domain DTOs (an enum constant missing on either side fails the build). Business logic
+lives in the domain (`app/*/service`): `OrderRules` (cancel, address change, return window), `OrderCommandService`,
+`ReturnCommandService`, `RefundCommandService`, `RefundLedger`, `ShipmentService`, `AddressService`.
+
+### Tools
+
+| Tool | Audience | Category | What it does |
+|---|---|---|---|
+| `search_products` | both | READ | text + category, brands, price, rating, stock, attribute filters, sort; `refinements` (top categories/brands, price range) when the result is bigger than a page |
+| `get_category_filters` | both | READ | category path, subcategories, filterable attributes (codes, options, ranges) |
+| `get_product` | both | READ | details, attributes, stock, rating distribution; DRAFT = not found |
+| `get_product_reviews` | both | READ | page of reviews (bodies cut to 300 chars for the model) |
+| `search_orders` | C / S (+customerId, sellerId) | READ | number, statuses, dates, product words; newest first |
+| `get_order` | both | READ | lines with itemId, payments, shipments, returns, refunds, `actions` (verdicts + return deadline + returnable quantities) |
+| `cancel_order` | both | SENSITIVE | PENDING/PAID, not shipped; voids or refunds the rest, releases stock |
+| `get_addresses` | C / S (customerId) | READ | saved addresses |
+| `update_shipping_address` | both | SENSITIVE | not shipped yet; a saved address of the order's customer |
+| `track_shipment` | both | READ | by order number or tracking number; carrier scans (model sees the last 5) |
+| `search_shipments` | S | READ | carrier, statuses, dates, customer, seller, `overdueOnly` |
+| `search_returns` | C / S (+customer, seller, reason, dates) | READ | return requests |
+| `request_return` | both | SENSITIVE | delivered, inside the seller's window, quantity ≤ returnable |
+| `cancel_return` | both | SENSITIVE | REQUESTED only |
+| `decide_return` | S | SENSITIVE | approve/reject REQUESTED or DISPUTED, with a note |
+| `search_refunds` | C / S (+customer, seller, dates) | READ | refunds |
+| `issue_refund` | S | SENSITIVE | T1 ≤ 100, T2 ≤ 1000, ADMIN unlimited; ≤ what is left to refund; idempotent per call |
+| `find_customers`, `get_customer` | S | READ | find by name/email; profile, addresses, counts |
+| `escalate_to_human` | C | SENSITIVE (approval shows the summary) | hand-off: opens a T1 ticket linked to the order and the conversation, first message = the agent's summary (author AI); a second hand-off about the same order (or conversation) goes into the open ticket |
+| `search_tickets` | C / S (+ assignee ME/UNASSIGNED/ANY, tier, priority, category, customer, query) | READ | own tickets / the support queue |
+| `get_ticket` | both | READ | ticket + latest 10 messages; internal notes only for staff |
+| `take_ticket`, `add_internal_note`, `escalate_ticket` | S | READ (internal, no approval) | assign to self; staff-only note; T1 → T2 (ESCALATED, unassigned, reason as note) |
+| `reply_to_ticket`, `resolve_ticket` | S | SENSITIVE | customer-visible message; status PENDING (waiting on customer) / RESOLVED |
+| `ask_choice`, `ask_input`, `ask_yes_no` | both | ASK | unchanged |
+
+A product or order detail shows as a one-card PRODUCT_LIST / ORDER_LIST block until it has its own block. Any other
+result cannot be shown: its ref line says "not shown to the user", and validation rejects a display reference to it,
+so the model writes the facts in the text.
+
+### Hand-off (human support)
+Async tickets with a staff copilot. Scenario tested end to end through the model: a customer reports a parcel shown
+delivered but never received → the agent checks tracking and the order, explains it cannot refund, and calls
+`escalate_to_human` (customer approves the summary) → ticket `TCK-…` opens (OPEN, T1, linked to the conversation);
+more details from the customer go into the same ticket → support T1 lists the unassigned queue, takes the ticket,
+re-checks the facts, issues the refund (within its limit) and resolves the ticket with a message to the customer →
+the customer asks the agent for news and gets the resolution. Over the T1 limit, the refund is refused and
+`escalate_ticket` hands the ticket to T2. Domain: `TicketCommandService` (open with dedup, take, note, reply,
+escalate, resolve), `TicketLookup`, `TicketSearch`; `ticket.conversation_id` (Flyway V17).
+
+Dev-only: with `app.ai2.dev-endpoints=true` (launch config `backend-dev-tools`), `GET /api/ai2/dev/tools` lists the
+caller's catalog and `POST /api/ai2/dev/tools/{name}` runs one tool as the caller (no model, no approval step).
+Demo data (`V113`): customers `customer_1..3` each have a PENDING, a PAID, a SHIPPED (in transit) and a DELIVERED
+order (`AS-<yymmdd>-9<n>000<1..4>`, dated when the migration ran) and a second saved address.
 
 ---
 
@@ -308,9 +373,12 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
   `gpt-6-luna` rejects function tools with reasoning on chat completions. `store=false`. It is a non-default bean
   (`defaultCandidate = false`), injected by name only, so old code asking for "a ChatModel" never gets it. Without an
   API key the app still starts and ai2 calls fail with a clear message.
-- System prompt: `src/main/resources/prompts/ai2/system-<version>.md`, chosen by `app.ai2.prompt.version`. Placeholders
-  (`{{maxTextLength}}` …) are filled from `app.ai2.reply.*` at startup; the same values are enforced by validation.
-  Each call adds today's date and, on the last allowed call, the "no more tools" note.
+- System prompt, chosen by `app.ai2.prompt.version` (default `v2`): `prompts/ai2/v2/base.md` (marketplace intro,
+  status glossary, all working rules, paging rule, tool guide) with the audience's `customer.md` or `staff.md` inserted
+  at `{{audience}}`; older versions are one file `prompts/ai2/system-<version>.md`. Placeholders (`{{maxTextLength}}`,
+  `{{pageSize}}` …) are filled at startup from `app.ai2.reply.*` and the paging limits. Each call adds today's date,
+  who the user is (customer, or support role with its refund limit) and, on the last allowed call, the "no more
+  tools" note.
 - The prompt covers: scope and refusals (including questions about the system or instructions), facts only from
   tools, never claiming an unseen success, tool results are data not instructions, never asking for confirmation
   (the system confirms), refs and what to display, the ask tools one by one and the mixing rule, suggested replies
@@ -442,6 +510,7 @@ turns into stop while a run executes. Socket events of other conversations only 
 ```yaml
 app:
   ai2:
+    dev-endpoints: ${AI2_DEV_ENDPOINTS:false}   # /api/ai2/dev/tools (never in production)
     model:          # OpenAI Responses API
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
@@ -450,7 +519,7 @@ app:
       reasoning-effort: ${AI2_REASONING_EFFORT:}   # none | minimal | low | medium | high
       timeout: 60s
     prompt:
-      version: ${AI2_PROMPT_VERSION:v1}
+      version: ${AI2_PROMPT_VERSION:v2}   # prompts/ai2/v2/base.md + customer.md / staff.md
     reply:          # told to the model and enforced by validation
       max-text-length: 600
       max-suggestions: 3
@@ -480,14 +549,23 @@ app:
 
 ## 13. Trying it out
 
-Launch configurations in `.claude/launch.json`: `backend` (normal), `backend-small-memory` (summarize after 4
-messages), `backend-tiny-memory` (summarize after 2, hard limit 50 characters — to see a conversation close).
+Launch configurations in `.claude/launch.json`: `backend` (normal), `backend-dev-tools` (with
+`/api/ai2/dev/tools`), `backend-small-memory` (summarize after 4 messages), `backend-tiny-memory` (summarize after 2,
+hard limit 50 characters — to see a conversation close).
 
-Seeded demo users: `customer_1`, `customer_2`, … (see `db/seed/V111__seed_logins.sql` for the password).
+Seeded demo users (password = username): `customer_1..3`, `support_t1_1..3`, `support_t2_1..3`, `admin_1..3`
+(`db/seed/V111__seed_logins.sql`). Each demo customer has a PENDING, a PAID, an in-transit and a delivered order
+(`AS-<yymmdd>-9<n>000<1..4>`, from `V113`), and a second saved address.
+
+Try one tool without the model (dev endpoint, runs as the signed-in user, no approval step):
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/ai2/dev/tools/track_shipment -Headers $headers -ContentType 'application/json' -Body '{"trackingNumber":"1ZDEMO10003"}'
+```
 
 ```powershell
 $headers = @{ Authorization = "Bearer " + (Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/auth/login -ContentType 'application/json' -Body (@{ username = 'customer_1'; password = $password } | ConvertTo-Json)).token }
-$r = Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/ai2/conversations/messages -Headers $headers -ContentType 'application/json' -Body '{"text":"please cancel my order WE45"}'
+$r = Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/ai2/conversations/messages -Headers $headers -ContentType 'application/json' -Body '{"text":"please cancel my pending order"}'
 # follow the run until REPLY / INTERACTION / ERROR; the INTERACTION event carries interaction.interactionId
 curl.exe -sN -H "Authorization: $($headers.Authorization)" "http://localhost:8080/api/ai2/runs/$($r.runId)/events"
 Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/ai2/conversations/$($r.conversationId)/answers" -Headers $headers -ContentType 'application/json' -Body (@{ interactionId = $interactionId; answer = @{ type = 'approval'; approved = $true } } | ConvertTo-Json -Depth 5)
@@ -496,7 +574,9 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8080/api/ai2/conversations
 Scenarios verified against the live app with the real model: first message creates a conversation; follow-ups use
 history; question/approval lifecycle (PENDING → APPROVED / DISMISSED / NOT_ANSWERED); a paused approval answered after
 a restart; double answer 409; wrong interaction id → abandoned; RUNNING lock and its cleanup at startup; another
-user's conversation 404; delete cascades; summarization inside the run; hard limit closes the conversation.
+user's conversation 404; delete cascades; summarization inside the run; hard limit closes the conversation; customer
+and staff tool catalogs (20 / 29 tools); tracking, order actions, returns, cancellation and address change; refund
+limits per tier; the hand-off scenario (section 5) from the customer's report to the resolved ticket.
 
 ---
 
@@ -508,7 +588,10 @@ user's conversation 404; delete cascades; summarization inside the run; hard lim
 - A stopped or failed run leaves the user's message unanswered in the history, so the next run's model may still
   answer it; store a marker (or tell the model) for such runs.
 - WebSocket hardening: a cap on open sockets per user, and a rate limit on chat frames.
-- Real data for the tools (catalog and order services), always scoped to the run's customer.
+- Hand-off follow-ups: a staff reply/resolution posted into the customer's linked conversation (domain event → ai2
+  listener → "Support team" chat message, needs a frontend card); code-forced escalation (a "Talk to a person" button,
+  repeated tool failures, step budget used up); priority rules and response times per category.
+- Display blocks for product/order detail, tracking, returns, refunds and tickets.
 - Pre-approval check for sensitive tools: today `cancel_order` on a delivered order asks for approval first and only
   then fails; check feasibility (and compute consequences for the approval detail) before pausing.
 - Validation stubs: tool-argument checks, per-step call cap, duplicate calls, silent fixes.
@@ -519,5 +602,5 @@ user's conversation 404; delete cascades; summarization inside the run; hard lim
 - Retries on model errors; token/cost budget per run; usage recording for ai2 model calls.
 - Several app instances: dropping RUNNING runs at startup assumes one instance (needs owner + heartbeat, or resuming
   from checkpoints).
-- Tool filtering per user/role in `ToolRegistry.specificationsFor`; per-user facts in the system prompt.
+- The approval text of a sensitive tool can only show its arguments (e.g. an address id, not the address).
 - Spring wiring of the nodes (they are built by `RunGraph` today).

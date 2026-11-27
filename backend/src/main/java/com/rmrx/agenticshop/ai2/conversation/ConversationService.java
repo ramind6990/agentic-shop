@@ -13,6 +13,7 @@ import com.rmrx.agenticshop.ai2.events.ChatResponse;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.app.common.exception.NotFoundException;
+import com.rmrx.agenticshop.app.security.CurrentUser;
 import dev.langchain4j.data.message.UserMessage;
 import org.springframework.stereotype.Service;
 
@@ -53,7 +54,8 @@ public class ConversationService {
      * A new message: starts a run (abandoning a paused one first). Without a conversation id, a new conversation is
      * created for it.
      */
-    public RunOutcome sendMessage(Long userId, Long conversationId, String text, String requestId) {
+    public RunOutcome sendMessage(CurrentUser user, Long conversationId, String text, String requestId) {
+        Long userId = user.id();
         Conversation conversation = conversationId == null ? conversations.create(userId) : owned(conversationId, userId);
         if (conversation.status() == Conversation.Status.CLOSED) {
             throw new ConversationConflictException("This conversation is full; please start a new one.");
@@ -68,7 +70,7 @@ public class ConversationService {
                 .orElseThrow(() -> new ConversationConflictException("Another run started in this conversation."));
         messages.appendUser(conversation.id(), run.runId(), text);
         conversations.touch(conversation.id());
-        RunContext context = new RunContext(userId, conversation.id(), run.runId());
+        RunContext context = RunContext.of(user, conversation.id(), run.runId());
         return launcher.launch(run, requestId, ChatResponse.Input.text(text),
                 () -> runner.start(context, List.of(UserMessage.from(text))));
     }

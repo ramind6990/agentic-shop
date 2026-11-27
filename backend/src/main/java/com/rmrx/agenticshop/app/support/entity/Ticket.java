@@ -97,4 +97,30 @@ public class Ticket extends BaseEntity {
     public void touch(Instant now) {
         this.updatedAt = now;
     }
+
+    /** The agent conversation the ticket was opened from (hand-off), or null. */
+    @Column(name = "conversation_id")
+    private Long conversationId;
+
+    public void linkConversation(Long conversationId) {
+        this.conversationId = conversationId;
+    }
+
+    /** Still being worked on (not RESOLVED or CLOSED). */
+    public boolean isOpen() {
+        return status != TicketStatus.RESOLVED && status != TicketStatus.CLOSED;
+    }
+
+    public void assignTo(AppUser staff, Instant now) {
+        this.assignee = staff;
+        this.updatedAt = now;
+    }
+
+    /** Moves the ticket to the second support tier, back into its queue (unassigned). */
+    public void escalate(Instant now) {
+        this.tier = SupportTier.T2;
+        this.status = TicketStatus.ESCALATED;
+        this.assignee = null;
+        this.updatedAt = now;
+    }
 }

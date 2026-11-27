@@ -63,7 +63,7 @@ public class ModelCallNode implements NodeActionWithConfig<RunState> {
         ChatRequest request = ChatRequest.builder()
                 .messages(messages)
                 // always sent: the messages may contain earlier tool calls
-                .toolSpecifications(registry.specificationsFor(state.context()))
+                .toolSpecifications(registry.catalog(state.context()).specifications())
                 .toolChoice(toolsOn ? ToolChoice.AUTO : ToolChoice.NONE)
                 .responseFormat(RESPONSE_FORMAT)
                 .build();

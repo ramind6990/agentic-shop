@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
 
 @Service
 @Transactional(readOnly = true)
@@ -35,13 +37,19 @@ public class ReturnService {
 
     public PageResponse<ReturnDto> searchReturns(ReturnStatus status, ReturnReason reason, Long sellerId,
                                                  Long customerId, Instant from, Instant to, Pageable pageable) {
+        return searchReturns(new ReturnSearch(null, status == null ? List.of() : List.of(status), reason,
+                customerId, sellerId, from, to), pageable);
+    }
+
+    public PageResponse<ReturnDto> searchReturns(ReturnSearch s, Pageable pageable) {
         Specification<ReturnRequest> spec = Specification.allOf(
-                Specs.eq("status", status),
-                Specs.eq("reason", reason),
-                Specs.eq("order.seller.id", scope.sellerFilter(sellerId)),
-                Specs.eq("customer.id", scope.customerFilter(customerId)),
-                Specs.gte("openedAt", from),
-                Specs.lt("openedAt", to));
+                Specs.eq("order.orderNumber", upper(s.orderNumber())),
+                Specs.in("status", s.statuses()),
+                Specs.eq("reason", s.reason()),
+                Specs.eq("order.seller.id", scope.sellerFilter(s.sellerId())),
+                Specs.eq("customer.id", scope.customerFilter(s.customerId())),
+                Specs.gte("openedAt", s.from()),
+                Specs.lt("openedAt", s.to()));
         return PageResponse.of(returnRepository.findAll(spec, pageable), mapper::toReturn);
     }
 
@@ -53,13 +61,23 @@ public class ReturnService {
 
     public PageResponse<RefundDto> searchRefunds(RefundStatus status, Long orderId, Long sellerId,
                                                  Instant from, Instant to, Pageable pageable) {
+        return searchRefunds(new RefundSearch(null, orderId, status == null ? List.of() : List.of(status), null,
+                sellerId, from, to), pageable);
+    }
+
+    public PageResponse<RefundDto> searchRefunds(RefundSearch s, Pageable pageable) {
         Specification<Refund> spec = Specification.allOf(
-                Specs.eq("status", status),
-                Specs.eq("order.id", orderId),
-                Specs.eq("order.seller.id", scope.sellerFilter(sellerId)),
-                Specs.eq("order.customer.id", scope.customerFilter(null)),
-                Specs.gte("createdAt", from),
-                Specs.lt("createdAt", to));
+                Specs.eq("order.orderNumber", upper(s.orderNumber())),
+                Specs.eq("order.id", s.orderId()),
+                Specs.in("status", s.statuses()),
+                Specs.eq("order.seller.id", scope.sellerFilter(s.sellerId())),
+                Specs.eq("order.customer.id", scope.customerFilter(s.customerId())),
+                Specs.gte("createdAt", s.from()),
+                Specs.lt("createdAt", s.to()));
         return PageResponse.of(refundRepository.findAll(spec, pageable), mapper::toRefund);
+    }
+
+    private static String upper(String orderNumber) {
+        return orderNumber == null || orderNumber.isBlank() ? null : orderNumber.trim().toUpperCase(Locale.ROOT);
     }
 }

@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.time.LocalDate;
 
 @Getter
 @Entity
@@ -34,4 +35,7 @@ public class Shipment extends BaseEntity {
 
     @Column(name = "delivered_at")
     private Instant deliveredAt;
+
+    @Column(name = "estimated_delivery")
+    private LocalDate estimatedDelivery;
 }

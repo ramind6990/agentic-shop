@@ -52,4 +52,42 @@ public class ReturnRequest extends BaseEntity {
 
     @Column(name = "resolved_at")
     private Instant resolvedAt;
+
+    /** Staff user who approved or rejected the request (null when the seller decided). */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "decided_by_id")
+    private AppUser decidedBy;
+
+    @Column(name = "resolution_note", columnDefinition = "text")
+    private String resolutionNote;
+
+    public static ReturnRequest open(OrderItem item, int quantity, ReturnReason reason, String note, Instant at) {
+        ReturnRequest r = new ReturnRequest();
+        r.order = item.getOrder();
+        r.orderItem = item;
+        r.customer = item.getOrder().getCustomer();
+        r.quantity = quantity;
+        r.reason = reason;
+        r.customerNote = note;
+        r.status = ReturnStatus.REQUESTED;
+        r.openedAt = at;
+        return r;
+    }
+
+    /** Still counts against the line's returnable quantity (not rejected or withdrawn). */
+    public boolean isActive() {
+        return status != ReturnStatus.REJECTED && status != ReturnStatus.CANCELLED;
+    }
+
+    public void cancel(Instant at) {
+        this.status = ReturnStatus.CANCELLED;
+        this.resolvedAt = at;
+    }
+
+    public void decide(boolean approve, String note, AppUser staff, Instant at) {
+        this.status = approve ? ReturnStatus.APPROVED : ReturnStatus.REJECTED;
+        this.resolutionNote = note;
+        this.decidedBy = staff;
+        if (!approve) this.resolvedAt = at;
+    }
 }

@@ -4,12 +4,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import com.rmrx.agenticshop.app.catalog.dto.ProductDtos.*;
 import com.rmrx.agenticshop.app.catalog.service.ProductSearchCriteriaParser;
 import com.rmrx.agenticshop.app.catalog.service.ProductService;
+import com.rmrx.agenticshop.app.catalog.service.ProductSorts;
 import com.rmrx.agenticshop.app.common.dto.PageResponse;
-import com.rmrx.agenticshop.app.common.exception.BadRequestException;
 import com.rmrx.agenticshop.app.common.web.Paging;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import org.springframework.data.domain.Sort;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,7 +38,7 @@ public class ProductController {
             @RequestParam(defaultValue = "relevance") String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "24") int size) {
-        return productService.search(parser.parse(params), Paging.of(page, size, sort(sort)));
+        return productService.search(parser.parse(params), Paging.of(page, size, ProductSorts.products(sort)));
     }
 
     @Operation(summary = "Facet counts for the filter sidebar", description = FILTER_DOC)
@@ -60,29 +59,11 @@ public class ProductController {
                                            @RequestParam(defaultValue = "newest") String sort,
                                            @RequestParam(defaultValue = "0") int page,
                                            @RequestParam(defaultValue = "10") int size) {
-        Sort s = switch (sort) {
-            case "newest" -> Sort.by(Sort.Order.desc("createdAt"));
-            case "helpful" -> Sort.by(Sort.Order.desc("helpfulCount"), Sort.Order.desc("createdAt"));
-            default -> throw new BadRequestException("Unknown sort: " + sort);
-        };
-        return productService.reviews(id, rating, Paging.of(page, size, s));
+        return productService.reviews(id, rating, Paging.of(page, size, ProductSorts.reviews(sort)));
     }
 
     @GetMapping("/{id}/reviews/summary")
     public RatingSummary ratingSummary(@PathVariable Long id) {
         return productService.ratingSummary(id);
-    }
-
-    private static Sort sort(String sort) {
-        Sort s = switch (sort) {
-            // No full-text ranking yet: "relevance" favours popular products.
-            case "relevance", "bestselling" -> Sort.by(Sort.Order.desc("salesCount"));
-            case "price_asc" -> Sort.by(Sort.Order.asc("price"));
-            case "price_desc" -> Sort.by(Sort.Order.desc("price"));
-            case "newest" -> Sort.by(Sort.Order.desc("createdAt"));
-            case "rating" -> Sort.by(Sort.Order.desc("ratingAvg").nullsLast(), Sort.Order.desc("ratingCount"));
-            default -> throw new BadRequestException("Unknown sort: " + sort);
-        };
-        return s.and(Sort.by("id"));
     }
 }

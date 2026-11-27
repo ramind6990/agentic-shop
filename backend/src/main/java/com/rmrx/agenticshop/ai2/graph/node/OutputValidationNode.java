@@ -1,6 +1,7 @@
 package com.rmrx.agenticshop.ai2.graph.node;
 
 import com.rmrx.agenticshop.ai2.contract.interaction.InteractionJson;
+import com.rmrx.agenticshop.ai2.contract.reply.ReplyEnvelopes;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.RunLimits;
 import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
@@ -11,7 +12,7 @@ import com.rmrx.agenticshop.ai2.graph.state.RunState;
 import com.rmrx.agenticshop.ai2.graph.state.StepPlan;
 import com.rmrx.agenticshop.ai2.graph.state.ValidationOutcome;
 import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
-import com.rmrx.agenticshop.ai2.tools.ToolCategory;
+import com.rmrx.agenticshop.ai2.tools.ToolCatalog;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
@@ -60,13 +61,14 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
             // the last call was made with tools off; tool calls now cannot be honoured
             return failure(state, errorResults(requests, "Not executed: the tool budget of this run is used up."));
         }
-        List<String> errors = checkToolCalls(requests);
+        ToolCatalog tools = registry.catalog(state.context());
+        List<String> errors = checkToolCalls(tools, requests);
         if (!errors.isEmpty()) return failure(state, errorResults(requests, String.join("; ", errors)));
 
         List<ChatMessage> results = new ArrayList<>();          // results for calls that will not run
         List<ToolExecutionRequest> kept = capStepCalls(requests, results);
         kept = dropDuplicateCalls(state, kept, results);
-        StepPlan plan = classifyToolCalls(kept);
+        StepPlan plan = classifyToolCalls(tools, kept);
         results.addAll(deferredResults(plan, kept));
 
         Map<String, Object> update = new HashMap<>();
@@ -78,10 +80,10 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
     }
 
     /** Unknown tool names, arguments that do not parse against the tool's parameters. */
-    private List<String> checkToolCalls(List<ToolExecutionRequest> requests) {
+    private List<String> checkToolCalls(ToolCatalog tools, List<ToolExecutionRequest> requests) {
         List<String> errors = new ArrayList<>();
         for (ToolExecutionRequest r : requests) {
-            if (registry.find(r.name()).isEmpty()) errors.add("Unknown tool: " + r.name());
+            if (tools.find(r.name()).isEmpty()) errors.add("Unknown tool: " + r.name());
         }
         // TODO arguments parse against the tool's parameters; for ask tools: ask_choice has 2..6 options with unique
         //  values, questions are not blank
@@ -109,12 +111,12 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
     }
 
     /** Sorts the calls by tool category; sensitive calls are deferred when the step also asks the user something. */
-    private StepPlan classifyToolCalls(List<ToolExecutionRequest> requests) {
+    private StepPlan classifyToolCalls(ToolCatalog tools, List<ToolExecutionRequest> requests) {
         List<String> read = new ArrayList<>();
         List<String> ask = new ArrayList<>();
         List<String> sensitive = new ArrayList<>();
         for (ToolExecutionRequest r : requests) {
-            switch (categoryOf(r)) {
+            switch (tools.category(r.name()).orElseThrow()) { // unknown tools were rejected before
                 case READ -> read.add(r.id());
                 case ASK -> ask.add(r.id());
                 case SENSITIVE -> sensitive.add(r.id());
@@ -122,11 +124,6 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         }
         if (!ask.isEmpty()) return new StepPlan(read, ask, List.of(), sensitive);
         return new StepPlan(read, ask, sensitive, List.of());
-    }
-
-    /** Unknown tools were rejected by {@link #checkToolCalls} before classification. */
-    private ToolCategory categoryOf(ToolExecutionRequest request) {
-        return registry.category(request.name()).orElseThrow();
     }
 
     private List<ChatMessage> deferredResults(StepPlan plan, List<ToolExecutionRequest> requests) {
@@ -209,6 +206,10 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         if (result == null) {
             return List.of("Unknown ref " + display.ref() + " in finalReferenceToDisplay; available refs: "
                     + new TreeSet<>(results.keySet()));
+        }
+        if (!ReplyEnvelopes.displayable(result.value())) {
+            return List.of(display.ref() + " (" + result.toolName() + ") cannot be shown to the user: only product "
+                    + "and order results can. Set finalReferenceToDisplay to null and write the key facts in text");
         }
         List<String> selected = display.selectedItemIdentifiers() == null ? List.of() : display.selectedItemIdentifiers();
         List<String> available = result.value().itemIdentifiers();

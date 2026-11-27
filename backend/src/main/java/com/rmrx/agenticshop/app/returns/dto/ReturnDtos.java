@@ -18,7 +18,7 @@ public final class ReturnDtos {
 
     public record ReturnDto(Long id, OrderRef order, Long orderItemId, Ref product, Ref customer, int quantity,
                             ReturnReason reason, ReturnStatus status, String customerNote, String sellerNote,
-                            Instant openedAt, Instant resolvedAt) {
+                            Instant openedAt, Instant resolvedAt, String resolutionNote) {
     }
 
     public record RefundDto(Long id, OrderRef order, Long returnRequestId, BigDecimal amount, String reason,

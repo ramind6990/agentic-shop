@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai2.graph.node;
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
+import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
 import com.rmrx.agenticshop.ai2.tools.ExecutedCall;
 import com.rmrx.agenticshop.ai2.tools.ToolCallExecutor;
@@ -46,7 +47,7 @@ public class SensitiveToolExecutionNode implements NodeActionWithConfig<RunState
     public Optional<InterruptionMetadata<RunState>> interrupt(String nodeId, RunState state, RunnableConfig config) {
         return nextPendingApproval(state).map(call -> InterruptionMetadata.builder(nodeId, state)
                 .reason(REASON)
-                .putMetadata(PendingInteraction.METADATA_KEY, toApprovalRequest(state.context().runId(), call))
+                .putMetadata(PendingInteraction.METADATA_KEY, toApprovalRequest(state.context(), call))
                 .build());
     }
 
@@ -80,10 +81,10 @@ public class SensitiveToolExecutionNode implements NodeActionWithConfig<RunState
     }
 
     /** Title and detail come from the tool's {@code @Sensitive} templates, rendered from the call's arguments. */
-    private PendingInteraction.ApprovalRequest toApprovalRequest(UUID runId, ToolExecutionRequest call) {
-        String title = registry.approvalMessage(call)
+    private PendingInteraction.ApprovalRequest toApprovalRequest(RunContext context, ToolExecutionRequest call) {
+        String title = registry.catalog(context).approvalMessage(call)
                 .orElseThrow(() -> new IllegalStateException("not a sensitive tool: " + call.name()));
-        return new PendingInteraction.ApprovalRequest(PendingInteraction.idFor(runId, call.id()), call.id(),
-                title, registry.approvalDetail(call).orElse(null));
+        return new PendingInteraction.ApprovalRequest(PendingInteraction.idFor(context.runId(), call.id()), call.id(),
+                title, registry.catalog(context).approvalDetail(call).orElse(null));
     }
 }

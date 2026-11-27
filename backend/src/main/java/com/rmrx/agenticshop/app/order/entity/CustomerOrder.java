@@ -59,4 +59,29 @@ public class CustomerOrder extends BaseEntity {
     @OneToMany(mappedBy = "order")
     @OrderBy("id")
     private List<OrderItem> items = new ArrayList<>();
+
+    @Column(name = "cancelled_at")
+    private Instant cancelledAt;
+
+    @Column(name = "cancellation_reason")
+    private String cancellationReason;
+
+    public void cancel(String reason, Instant at) {
+        this.status = OrderStatus.CANCELLED;
+        this.cancellationReason = reason;
+        this.cancelledAt = at;
+    }
+
+    public void shipTo(ShippingAddress address) {
+        this.shippingAddress = address;
+    }
+
+    /**
+     * After a refund: REFUNDED when everything was paid back. A partial refund marks a delivered order
+     * PARTIALLY_REFUNDED; an order on its way keeps its status (the refund is recorded on its own).
+     */
+    public void markRefunded(boolean fully) {
+        if (fully) this.status = OrderStatus.REFUNDED;
+        else if (this.status == OrderStatus.DELIVERED) this.status = OrderStatus.PARTIALLY_REFUNDED;
+    }
 }

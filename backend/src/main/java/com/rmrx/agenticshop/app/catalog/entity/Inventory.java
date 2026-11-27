@@ -38,4 +38,9 @@ public class Inventory {
     public boolean isInStock() {
         return qtyAvailable - qtyReserved > 0;
     }
+
+    /** Gives reserved units back to stock (never below zero reserved). */
+    public void release(int quantity) {
+        this.qtyReserved = Math.max(0, qtyReserved - quantity);
+    }
 }

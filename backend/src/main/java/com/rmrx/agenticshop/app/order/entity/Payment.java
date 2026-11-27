@@ -35,4 +35,13 @@ public class Payment extends BaseEntity {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    /** An authorization that is never captured: nothing was charged. */
+    public void voidAuthorization() {
+        this.status = PaymentStatus.VOIDED;
+    }
+
+    public void markRefunded(boolean fully) {
+        this.status = fully ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED;
+    }
 }
