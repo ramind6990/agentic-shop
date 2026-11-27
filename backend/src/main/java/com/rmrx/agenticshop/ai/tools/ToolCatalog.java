@@ -1,144 +1,55 @@
 package com.rmrx.agenticshop.ai.tools;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.rmrx.agenticshop.ai.action.WriteGateway;
-import com.rmrx.agenticshop.ai.config.AiProperties;
-import com.rmrx.agenticshop.ai.context.AgentContext;
-import com.rmrx.agenticshop.ai.rag.PolicyRetriever;
-import com.rmrx.agenticshop.ai.escalation.EscalationService;
-import com.rmrx.agenticshop.ai.tools.port.CatalogPort;
-import com.rmrx.agenticshop.ai.tools.port.OrderPort;
-import com.rmrx.agenticshop.ai.tools.port.RefundPort;
-import com.rmrx.agenticshop.ai.tools.port.ReturnPort;
-import com.rmrx.agenticshop.ai.tools.port.ShipmentPort;
-import com.rmrx.agenticshop.ai.tools.port.SupportPort;
-import com.rmrx.agenticshop.app.identity.entity.Role;
-import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
-import dev.langchain4j.agent.tool.ToolSpecifications;
-import dev.langchain4j.service.tool.DefaultToolExecutor;
-import org.springframework.stereotype.Component;
-import tools.jackson.databind.json.JsonMapper;
 
-import java.lang.reflect.Method;
-import java.time.Clock;
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.LinkedHashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-
-import static com.rmrx.agenticshop.ai.tools.CatalogTools.GET_PRODUCT;
-import static com.rmrx.agenticshop.ai.tools.CatalogTools.SEARCH_PRODUCTS;
-import static com.rmrx.agenticshop.ai.tools.OrderTools.FIND_CUSTOMER_ORDERS;
-import static com.rmrx.agenticshop.ai.tools.OrderTools.GET_MY_ORDERS;
-import static com.rmrx.agenticshop.ai.tools.OrderTools.GET_ORDER;
-import static com.rmrx.agenticshop.ai.tools.OrderTools.TRACK_SHIPMENT;
-import static com.rmrx.agenticshop.ai.tools.PolicyTools.SEARCH_POLICIES;
-import static com.rmrx.agenticshop.ai.tools.ReturnTools.GET_RETURN_STATUS;
-import static com.rmrx.agenticshop.ai.tools.OrderTools.ASK_USER_TO_CHOOSE_ORDER;
-import static com.rmrx.agenticshop.ai.tools.SupportTools.ESCALATE_TO_HUMAN;
-import static com.rmrx.agenticshop.ai.tools.SupportTools.GET_TICKET_HISTORY;
-import static com.rmrx.agenticshop.ai.tools.WriteTools.REQUEST_ORDER_CANCELLATION;
-import static com.rmrx.agenticshop.ai.tools.WriteTools.REQUEST_REFUND;
-import static com.rmrx.agenticshop.ai.tools.WriteTools.REQUEST_RETURN;
+import java.util.Optional;
 
 /**
- * Builds the tools of one turn for one caller: {@link #toolsFor} creates the {@code @Tool} objects with the caller's
- * {@link AgentContext} and the turn's {@link TurnResultRegistry} bound, and keeps only the tools the caller's role
- * may use. The model never sees, and cannot call, any other tool.
+ * The tools of one audience, by name: what a run offers the model and accepts back. A call to a name outside the
+ * catalog is unknown, even if another audience has a tool of that name.
  */
-@Component
-public class ToolCatalog {
+public final class ToolCatalog {
 
-    private static final Set<String> STAFF = Set.of(FIND_CUSTOMER_ORDERS, GET_ORDER, TRACK_SHIPMENT,
-            SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION,
-            REQUEST_RETURN, REQUEST_REFUND, ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN, SEARCH_POLICIES);
+    static final ToolCatalog EMPTY = new ToolCatalog(Map.of());
 
-    /** Which tools each role may use. */
-    static final Map<Role, Set<String>> ALLOWED = new EnumMap<>(Map.of(
-            Role.CUSTOMER, Set.of(GET_MY_ORDERS, GET_ORDER, TRACK_SHIPMENT, SEARCH_PRODUCTS, GET_PRODUCT,
-                    GET_RETURN_STATUS, GET_TICKET_HISTORY, REQUEST_ORDER_CANCELLATION, REQUEST_RETURN,
-                    ASK_USER_TO_CHOOSE_ORDER, ESCALATE_TO_HUMAN, SEARCH_POLICIES),
-            Role.SELLER, Set.of(GET_ORDER, SEARCH_PRODUCTS, GET_PRODUCT, GET_RETURN_STATUS, SEARCH_POLICIES),
-            Role.SUPPORT_T1, STAFF,
-            Role.SUPPORT_T2, STAFF,
-            Role.ADMIN, STAFF,
-            Role.FINANCE, Set.of(GET_ORDER, GET_RETURN_STATUS, SEARCH_POLICIES),
-            Role.FRAUD, Set.of(GET_ORDER, GET_RETURN_STATUS, SEARCH_POLICIES)));
+    private final Map<String, ToolDefinition> tools;
 
-    private final OrderPort orders;
-    private final ShipmentPort shipments;
-    private final CatalogPort catalog;
-    private final ReturnPort returns;
-    private final RefundPort refunds;
-    private final SupportPort support;
-    private final WriteGateway writes;
-    private final EscalationService escalations;
-    private final PolicyRetriever policies;
-    private final int policyExcerptChars;
-    private final Clock clock = Clock.systemUTC();
-    /** Tool results leave out null fields to stay compact for the model. */
-    private final JsonMapper json;
-
-    public ToolCatalog(OrderPort orders, ShipmentPort shipments, CatalogPort catalog, ReturnPort returns,
-                       RefundPort refunds, SupportPort support, WriteGateway writes, EscalationService escalations,
-                       PolicyRetriever policies, AiProperties props, JsonMapper json) {
-        this.policies = policies;
-        this.policyExcerptChars = props.rag().excerptChars();
-        this.escalations = escalations;
-        this.orders = orders;
-        this.shipments = shipments;
-        this.catalog = catalog;
-        this.returns = returns;
-        this.refunds = refunds;
-        this.support = support;
-        this.writes = writes;
-        this.json = json.rebuild()
-                .changeDefaultPropertyInclusion(incl -> incl.withValueInclusion(JsonInclude.Include.NON_NULL))
-                .build();
+    ToolCatalog(Map<String, ToolDefinition> tools) {
+        this.tools = Map.copyOf(tools);
     }
 
-    public static Set<String> allowedTools(Role role) {
-        return ALLOWED.getOrDefault(role, Set.of());
+    /** The specifications sent to the model, sorted by name. */
+    public List<ToolSpecification> specifications() {
+        return tools.values().stream()
+                .sorted(Comparator.comparing(ToolDefinition::name))
+                .map(ToolDefinition::specification)
+                .toList();
     }
 
-    /** The tools for this caller and turn. Build once per turn; the registry collects that turn's results. */
-    public BoundTools toolsFor(AgentContext ctx, TurnResultRegistry registry) {
-        Set<String> allowed = allowedTools(ctx.role());
-        List<Object> candidates = List.of(
-                new OrderTools(ctx, registry, json, orders, shipments),
-                new CatalogTools(ctx, registry, json, catalog),
-                new ReturnTools(ctx, registry, json, returns, refunds),
-                new SupportTools(ctx, registry, json, support, escalations),
-                new WriteTools(ctx, registry, json, writes),
-                new PolicyTools(ctx, registry, json, orders, policies, policyExcerptChars, clock));
-
-        Map<String, BoundTools.Bound> bound = new LinkedHashMap<>();
-        List<Object> instances = new ArrayList<>();
-        for (Object instance : candidates) {
-            Map<String, ToolSpecification> specs = new LinkedHashMap<>();
-            ToolSpecifications.toolSpecificationsFrom(instance).forEach(s -> specs.put(s.name(), s));
-            boolean used = false;
-            for (Method method : instance.getClass().getDeclaredMethods()) {
-                if (!method.isAnnotationPresent(Tool.class)) continue;
-                String name = ToolSpecifications.toolNameFrom(method);
-                if (!allowed.contains(name)) continue;
-                ToolLabel label = method.getAnnotation(ToolLabel.class);
-                bound.put(name, new BoundTools.Bound(name, specs.get(name), new DefaultToolExecutor(instance, method),
-                        label == null ? "Working on it\u2026" : label.value(), instance));
-                used = true;
-            }
-            if (used) instances.add(instance);
-        }
-        return new BoundTools(ctx, registry, sorted(bound), List.copyOf(instances), json);
+    public Optional<ToolDefinition> find(String name) {
+        return Optional.ofNullable(tools.get(name));
     }
 
-    /** Alphabetical, so the model sees the same tool order every turn. */
-    private static Map<String, BoundTools.Bound> sorted(Map<String, BoundTools.Bound> bound) {
-        Map<String, BoundTools.Bound> out = new LinkedHashMap<>();
-        bound.keySet().stream().sorted().forEach(k -> out.put(k, bound.get(k)));
-        return out;
+    public Optional<ToolCategory> category(String name) {
+        return find(name).map(ToolDefinition::category);
+    }
+
+    /** The call's {@link ToolLabel}, rendered from its arguments. */
+    public Optional<String> label(ToolExecutionRequest call) {
+        return find(call.name()).map(ToolDefinition::label).map(t -> t.render(call.arguments()));
+    }
+
+    /** The approval question of a sensitive call, rendered from its arguments. */
+    public Optional<String> approvalMessage(ToolExecutionRequest call) {
+        return find(call.name()).map(ToolDefinition::approvalMessage).map(t -> t.render(call.arguments()));
+    }
+
+    /** The approval detail of a sensitive call, rendered from its arguments. */
+    public Optional<String> approvalDetail(ToolExecutionRequest call) {
+        return find(call.name()).map(ToolDefinition::approvalDetail).map(t -> t.render(call.arguments()));
     }
 }

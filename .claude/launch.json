@@ -17,42 +17,42 @@
       "name": "backend-dev-tools",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
-        "-Dspring-boot.run.arguments=--app.ai2.dev-endpoints=true"],
+        "-Dspring-boot.run.arguments=--app.ai.dev-endpoints=true"],
       "port": 8080
     },
     {
       "name": "backend-guard-test",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
-        "-Dspring-boot.run.arguments=--app.ai2.dev-endpoints=true --app.ai2.guard.input.mode=SHADOW --app.ai2.guard.loop.max-tool-errors=1"],
+        "-Dspring-boot.run.arguments=--app.ai.dev-endpoints=true --app.ai.guard.input.mode=SHADOW --app.ai.guard.loop.max-tool-errors=1"],
       "port": 8082
     },
     {
       "name": "backend-langfuse",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
-        "-Dspring-boot.run.arguments=--app.ai2.langfuse.enabled=true"],
+        "-Dspring-boot.run.arguments=--app.ai.langfuse.enabled=true"],
       "port": 8080
     },
     {
       "name": "backend-small-memory",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
-        "-Dspring-boot.run.arguments=--app.ai2.memory.summarize-after=4 --app.ai2.memory.keep-recent=2"],
+        "-Dspring-boot.run.arguments=--app.ai.memory.summarize-after=4 --app.ai.memory.keep-recent=2"],
       "port": 8080
     },
     {
       "name": "backend-model-down",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
-        "-Dspring-boot.run.arguments=--app.ai2.model.base-url=http://localhost:9/v1 --app.ai2.model.retry.max-retries=3 --app.ai2.model.retry.initial-backoff=700ms"],
+        "-Dspring-boot.run.arguments=--app.ai.model.base-url=http://localhost:9/v1 --app.ai.model.retry.max-retries=3 --app.ai.model.retry.initial-backoff=700ms"],
       "port": 8080
     },
     {
       "name": "backend-tiny-memory",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
-        "-Dspring-boot.run.arguments=--app.ai2.memory.summarize-after=2 --app.ai2.memory.keep-recent=1 --app.ai2.memory.hard-limit-chars=50"],
+        "-Dspring-boot.run.arguments=--app.ai.memory.summarize-after=2 --app.ai.memory.keep-recent=1 --app.ai.memory.hard-limit-chars=50"],
       "port": 8080
     }
   ]

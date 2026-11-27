@@ -1,5 +1,7 @@
 # AI support agent — implementation steps
 
+> **Removed 2026-11-27:** the `ai` package described here (and its migrations, then numbered V8–V11) was deleted; the redesigned agent ([ai2-agent.md](ai2-agent.md)), since renamed from `ai2` to `ai`, replaces it. Kept as history.
+
 Steps for the features in [ai-plan.md](ai-plan.md). Each step was built and verified on its own before the next.
 
 ## Status (2026-11-25)

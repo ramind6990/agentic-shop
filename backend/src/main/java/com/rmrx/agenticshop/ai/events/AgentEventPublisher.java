@@ -1,35 +1,39 @@
 package com.rmrx.agenticshop.ai.events;
 
-import com.rmrx.agenticshop.ai.contract.block.Block;
-import com.rmrx.agenticshop.ai.contract.response.AgentResponse;
+import com.rmrx.agenticshop.ai.contract.reply.ReplyEnvelope;
+import com.rmrx.agenticshop.ai.graph.agent.pending.PendingInteraction;
 
 import java.util.UUID;
 
 /**
- * The event sink of one run; the only event API agent code uses (obtained from {@link RunEvents#open}). It knows
- * nothing about transports. seq (1, 2, 3, … per run) and {@code at} are assigned here, safely across threads.
- * {@link #complete} and {@link #fail} emit the last event and close the run; later emits are ignored.
+ * The event sink of one run (obtained from {@link RunEvents}); knows nothing about transports. Every event is a
+ * {@link ChatResponse}; seq and {@code at} are assigned here, safely across threads. {@link #complete}, {@link #pause}
+ * and {@link #fail} emit the last event and close the stream; later emits are ignored.
  */
 public interface AgentEventPublisher {
 
     UUID runId();
 
-    void runStarted(Long ticketId);
+    /** INPUT: what the user sent, starting or resuming the run; requestId is the sending client's, or null. */
+    void input(String requestId, ChatResponse.Input input);
 
-    void tokenDelta(String text);
-
+    /** PROGRESS TOOL_STARTED with the user-facing label. */
     void toolStarted(String toolName, String progressLabel);
 
-    /** errorCode is null on success. */
-    void toolFinished(String toolName, boolean success, String errorCode, long durationMs);
+    /** PROGRESS TOOL_FINISHED. */
+    void toolFinished(String toolName, boolean success, long durationMs);
 
-    void blockReady(Block block);
+    /** PROGRESS with a user-facing notice that is not about a tool (RETRYING, THINKING). */
+    void notice(ChatResponse.Stage stage, String label);
 
-    /** Emits FINAL and closes the run. */
-    void complete(AgentResponse response);
+    /** REPLY; closes the stream. */
+    void complete(ReplyEnvelope reply);
 
-    /** Emits ERROR and closes the run. */
-    void fail(String code, String message, boolean retryable);
+    /** INTERACTION; closes the stream (a resume opens a new one, see {@link RunEvents#open}). */
+    void pause(PendingInteraction interaction);
+
+    /** ERROR; closes the stream. */
+    void fail(ChatResponse.ErrorCode code, String message, boolean retryable);
 
     boolean isClosed();
 }

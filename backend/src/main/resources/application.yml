@@ -39,105 +39,33 @@ app:
     secret: ${JWT_SECRET:agenticshop-dev-only-secret-change-me-0123456789}
     ttl: ${JWT_TTL:8h}
 
+  # the ai agent's own model, called through OpenAI's Responses API (/v1/responses);
+  # without an API key the app starts, but ai runs fail
   ai:
-    # Off by default: no model beans, the rest of the app runs as before.
-    enabled: ${AI_ENABLED:false}
-    # Dev-only /api/ai/dev/** endpoints (model ping, JSON round-trip check). Never enable in production.
-    # dev-endpoints: true
-    openai:
-      api-key: ${OPENAI_API_KEY:}
-      base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-      log-requests: false
-      log-responses: false
-    chat:
-      model: ${AI_CHAT_MODEL:gpt-6-luna}
-      summary-model: ${AI_SUMMARY_MODEL:gpt-6-luna}
-      max-output-tokens: 4000
-      timeout: 60s
-    embedding:
-      model: ${AI_EMBEDDING_MODEL:text-embedding-3-small}
-      dimensions: 1536
-      timeout: 30s
-    agent:
-      step-budget: 8
-      history-window: 12
-      turn-timeout: 120s
-      # how the final reply picks status, shown results and quick replies: llm (structured output) | deterministic
-      compose-mode: ${AI_COMPOSE_MODE:llm}
-      # rolling summary: fold the oldest uncovered messages (all but the window) once more than the trigger exist
-      summary-enabled: true
-      summary-trigger: 18
-      summary-max-chars: 1200
-      # LangGraph4j checkpoints per run (ai_checkpoint); runs left RUNNING by a restart resume if young enough
-      checkpoints: true
-      resume-max-age: 10m
-    mock:
-      default-scenario: happy
-      scenario-header-enabled: false
-    failure-injection:
-      error-rate: 0
-      timeout-rate: 0
-      malformed-rate: 0
-      extra-latency: 0ms
-    events:
-      # closed runs stay replayable this long, so a late reconnect still gets the final event
-      retention: 5m
-      buffer-size: 2000
-      heartbeat: 15s
-    actions:
-      # how long a button on a reply item (view, track, cancel...) stays usable
-      item-ttl: 24h
-      # how long the CONFIRM/DECLINE pair of a pending write stays usable
-      confirmation-ttl: 15m
-    rag:
-      # chunk sizes in chars (~4 per token); a chunk never crosses a document section
-      chunk-target-chars: 2400
-      chunk-max-chars: 3200
-      chunk-min-chars: 400
-      chunk-overlap-chars: 240
-      embedding-batch-size: 64
-      # ingestion is manual (POST /api/ai/admin/rag/reindex) unless this is on
-      reindex-on-startup: ${AI_RAG_REINDEX_ON_STARTUP:false}
-      # retrieval (PolicyRetriever): candidates per list, RRF k, chunks returned, relevance gate, HNSW settings
-      vector-candidates: 40
-      keyword-candidates: 40
-      rrf-k: 60
-      top-k: 5
-      # supporting = IDF-weighted share of query terms in the chunk >= this, or cosine similarity >= the next
-      min-keyword-coverage: 0.5
-      min-vector-similarity: 0.5
-      hnsw-ef-search: 100
-      # relaxed_order | strict_order | off (needs pgvector 0.8+, detected at runtime)
-      hnsw-iterative-scan: relaxed_order
-      excerpt-chars: 600
-
-  # the ai2 agent's own model (independent of app.ai), called through OpenAI's Responses API (/v1/responses);
-  # without an API key the app starts, but ai2 runs fail
-  ai2:
-    # Dev-only /api/ai2/dev/tools endpoints (run one tool without the model). Never enable in production.
-    dev-endpoints: ${AI2_DEV_ENDPOINTS:false}
+    # Dev-only /api/ai/dev/tools endpoints (run one tool without the model). Never enable in production.
+    dev-endpoints: ${AI_DEV_ENDPOINTS:false}
     model:
       api-key: ${OPENAI_API_KEY:}
       base-url: ${OPENAI_BASE_URL:https://api.openai.com/v1}
-      model-name: ${AI2_CHAT_MODEL:gpt-6-luna}
+      model-name: ${AI_CHAT_MODEL:gpt-6-luna}
       max-output-tokens: 4000
       # none | minimal | low | medium | high; unset = the model's default
-      reasoning-effort: ${AI2_REASONING_EFFORT:}
+      reasoning-effort: ${AI_REASONING_EFFORT:}
       timeout: 60s
       log-requests: false
       log-responses: false
       # transient errors (rate limits, timeouts, 5xx, network) of the agent's model calls; the user sees
       # "Request failed. Retrying (n/max)". Backoff doubles from initial-backoff up to max-backoff (±20% jitter).
       retry:
-        max-retries: ${AI2_MODEL_MAX_RETRIES:5}
+        max-retries: ${AI_MODEL_MAX_RETRIES:5}
         initial-backoff: 1s
         max-backoff: 20s
     # budget of one run: once its model calls used this many tokens (input + output), the next call answers without tools
     run:
-      max-tokens: ${AI2_RUN_MAX_TOKENS:200000}
-    # system prompt: prompts/ai2/<version>/base.md + customer.md / staff.md (or prompts/ai2/system-<version>.md)
+      max-tokens: ${AI_RUN_MAX_TOKENS:200000}
+    # system prompt: prompts/ai/<version>/base.md + customer.md / staff.md (or prompts/ai/system-<version>.md)
     prompt:
-      version: ${AI2_PROMPT_VERSION:v4}
+      version: ${AI_PROMPT_VERSION:v4}
     # limits of the final reply: told to the model in the prompt and enforced by the output validation
     reply:
       max-text-length: 600
@@ -145,16 +73,16 @@ app:
       max-suggestion-label-length: 40
     # conversation memory: older messages are folded into a summary (inside the next run, when due)
     memory:
-      summarize-after: ${AI2_SUMMARIZE_AFTER:20}
-      keep-recent: ${AI2_KEEP_RECENT:6}
+      summarize-after: ${AI_SUMMARIZE_AFTER:20}
+      keep-recent: ${AI_KEEP_RECENT:6}
       max-summary-chars: 3000
       # a summary longer than this closes the conversation (new messages: "start a new one")
-      hard-limit-chars: ${AI2_SUMMARY_HARD_LIMIT:6000}
+      hard-limit-chars: ${AI_SUMMARY_HARD_LIMIT:6000}
       prompt-version: v2
     # guardrails; each mode is OFF | SHADOW (trace only) | ENFORCE
     guard:
       # model of the guards' own calls (injection classifier, reply auditor); unset = the agent's model
-      model-name: ${AI2_GUARD_MODEL:gpt-6-luna}
+      model-name: ${AI_GUARD_MODEL:gpt-6-luna}
       # the user's message and typed answers: direct prompt injection
       input:
         mode: ENFORCE
@@ -184,10 +112,10 @@ app:
     # what the chat's usage bar measures against, in tokens (shown as percentages; nothing is blocked)
     usage:
       # one conversation's model calls over its lifetime
-      chat-token-limit: ${AI2_CHAT_TOKEN_LIMIT:1000000}
+      chat-token-limit: ${AI_CHAT_TOKEN_LIMIT:1000000}
       # its history (summary + messages after it) as the next message gets it
-      context-token-limit: ${AI2_CONTEXT_TOKEN_LIMIT:200000}
-    # LLM tracing to Langfuse (OTLP over HTTP; ai2 runs only, prompts and replies PII-redacted). Off unless enabled
+      context-token-limit: ${AI_CONTEXT_TOKEN_LIMIT:200000}
+    # LLM tracing to Langfuse (OTLP over HTTP; ai runs only, prompts and replies PII-redacted). Off unless enabled
     # and both keys are set; keys from the project's Langfuse settings (EU cloud by default).
     langfuse:
       enabled: ${LANGFUSE_ENABLED:false}
@@ -195,7 +123,7 @@ app:
       public-key: ${LANGFUSE_PUBLIC_KEY:}
       secret-key: ${LANGFUSE_SECRET_KEY:}
       environment: ${LANGFUSE_ENVIRONMENT:development}
-    # live run events (/api/ai2/runs/{runId}/events), in memory
+    # live run events (/api/ai/runs/{runId}/events), in memory
     events:
       # closed streams stay replayable this long, so a late reconnect still gets the last event
       retention: 5m
@@ -203,9 +131,9 @@ app:
       heartbeat: 15s
       # a stream still open after this is closed (a hung run)
       max-open: 10m
-    # chat WebSocket (/api/ai2/ws?connectToken=..., token from POST /api/ai2/ws/connect-tokens)
+    # chat WebSocket (/api/ai/ws?connectToken=..., token from POST /api/ai/ws/connect-tokens)
     ws:
-      allowed-origins: ${AI2_WS_ALLOWED_ORIGINS:http://localhost:4200}
+      allowed-origins: ${AI_WS_ALLOWED_ORIGINS:http://localhost:4200}
       connect-token-ttl: 30s
       max-message-bytes: 16384
       # a slow client is disconnected once a send blocks this long or this much output is buffered

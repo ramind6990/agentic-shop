@@ -1,4 +1,4 @@
-/** Contracts of the ai2 chat (REST + WebSocket), mirroring the backend, and the view items the page renders. */
+/** Contracts of the ai chat (REST + WebSocket), mirroring the backend, and the view items the page renders. */
 
 // ---------------------------------------------------------------- conversations (REST)
 

@@ -1,100 +1,103 @@
 package com.rmrx.agenticshop.ai.trace;
 
-import com.rmrx.agenticshop.ai.context.AgentContext;
-import com.rmrx.agenticshop.ai.trace.entity.AiRun;
-import com.rmrx.agenticshop.ai.trace.entity.AiRunStatus;
-import com.rmrx.agenticshop.ai.trace.entity.AiStep;
-import com.rmrx.agenticshop.ai.trace.repository.AiRunRepository;
-import com.rmrx.agenticshop.ai.trace.repository.AiStepRepository;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
+import com.rmrx.agenticshop.ai.contract.tool.Texts;
+import com.rmrx.agenticshop.ai.model.AiModelProperties;
+import com.rmrx.agenticshop.ai.model.SystemPrompt;
+import com.rmrx.agenticshop.ai.trace.langfuse.LangfuseExporter;
+import com.rmrx.agenticshop.ai.usage.TokenCounts;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 
-import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Writes the debug trace of a run. Every write commits on its own (REQUIRES_NEW), so the trace survives a failed
- * turn and the run row exists before usage rows reference it. Step seq values come from the run's step counter
- * under a row lock, so concurrent steps of one run never collide. Step and finish failures are logged, not thrown.
+ * Writes run traces ({@code ai_run}, {@code ai_run_step}). Every write is one statement that commits on its own, so
+ * the trace survives a failed run. A step's seq comes from the run row's counter in the same statement (the row lock
+ * orders concurrent steps). Nothing here ever throws: a failed write is logged.
+ * <p>
+ * Run events and steps also go to {@link LangfuseExporter} (when on), except MODEL steps: {@code ModelGateway} reports
+ * those to Langfuse itself, with the full request and response.
  */
-@Slf4j
-@Service
+@Component("aiTraceRecorder")
 public class TraceRecorder {
 
-    /** Max characters kept of args and result summaries. */
-    public static final int SUMMARY_LIMIT = 2000;
+    private static final Logger log = LoggerFactory.getLogger(TraceRecorder.class);
+
+    /** Characters kept of args and result summaries. */
+    static final int SUMMARY_LIMIT = 2000;
     private static final int NAME_LIMIT = 120;
     private static final int CODE_LIMIT = 60;
-    private static final int SHORT_LIMIT = 80;
 
-    private final AiRunRepository runs;
-    private final AiStepRepository steps;
-    private final TransactionTemplate tx;
+    private final JdbcTemplate jdbc;
+    private final String promptVersion;
+    private final String model;
+    private final LangfuseExporter langfuse;
 
-    public TraceRecorder(AiRunRepository runs, AiStepRepository steps, PlatformTransactionManager transactionManager) {
-        this.runs = runs;
-        this.steps = steps;
-        this.tx = new TransactionTemplate(transactionManager);
-        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    public TraceRecorder(JdbcTemplate jdbc, SystemPrompt systemPrompt, AiModelProperties modelProps,
+                         LangfuseExporter langfuse) {
+        this.jdbc = jdbc;
+        this.promptVersion = systemPrompt.version();
+        this.model = modelProps.modelName();
+        this.langfuse = langfuse;
     }
 
-    public UUID startRun(AgentContext ctx, String promptVersion, String model) {
-        return startRun(ctx.userId(), ctx.ticketId(), promptVersion, model);
+    /** A run starts (new row) or resumes after a pause (RUNNING again). */
+    public void runStarted(UUID runId, Long conversationId, Long userId) {
+        write("start run " + runId, () -> jdbc.update("""
+                        insert into ai_run (id, conversation_id, user_id, status, prompt_version, model, started_at,
+                                             updated_at)
+                        values (?, ?, ?, 'RUNNING', ?, ?, now(), now())
+                        on conflict (id) do update set status = 'RUNNING', updated_at = now()""",
+                runId, conversationId, userId, promptVersion, model));
+        langfuse.runStarted(runId, conversationId, userId);
     }
 
-    /** Creates a RUNNING run and returns its id. Throws if the run cannot be saved. */
-    public UUID startRun(Long userId, Long ticketId, String promptVersion, String model) {
-        UUID id = UUID.randomUUID();
-        tx.executeWithoutResult(status -> runs.save(AiRun.start(id, ticketId, userId,
-                truncate(promptVersion, 40), truncate(model, SHORT_LIMIT), Instant.now())));
-        return id;
+    public void runPaused(UUID runId) {
+        write("pause run " + runId, () -> jdbc.update(
+                "update ai_run set status = 'PAUSED', updated_at = now() where id = ?", runId));
+        langfuse.runPaused(runId);
     }
 
-    public void recordModelStep(UUID runId, String model, String argsSummary, String resultSummary,
-                                String errorCode, Integer latencyMs, Integer inputTokens, Integer outputTokens) {
-        writeStep(runId, model, seq -> AiStep.model(runId, seq, truncate(model, NAME_LIMIT),
-                truncate(argsSummary, SUMMARY_LIMIT), truncate(resultSummary, SUMMARY_LIMIT),
-                truncate(errorCode, CODE_LIMIT), latencyMs, inputTokens, outputTokens, Instant.now()));
+    /** Closes the run; errorCode and message are null unless it failed. */
+    public void runFinished(UUID runId, RunStatus status, String errorCode, String message) {
+        write("finish run " + runId, () -> jdbc.update("""
+                        update ai_run set status = ?, error_code = ?, error_message = ?, finished_at = now(),
+                                           updated_at = now()
+                        where id = ?""",
+                status.name(), Texts.cut(errorCode, CODE_LIMIT), message, runId));
+        langfuse.runFinished(runId, status, errorCode, message);
     }
 
-    public void recordToolStep(UUID runId, String tool, String argsSummary, String resultSummary,
-                               String errorCode, Integer latencyMs) {
-        writeStep(runId, tool, seq -> AiStep.tool(runId, seq, truncate(tool, NAME_LIMIT),
-                truncate(argsSummary, SUMMARY_LIMIT), truncate(resultSummary, SUMMARY_LIMIT),
-                truncate(errorCode, CODE_LIMIT), latencyMs, Instant.now()));
+    public void step(UUID runId, TraceStep step) {
+        if (runId == null) return;
+        TokenCounts tokens = step.tokens();
+        write(step.type() + " step of run " + runId, () -> jdbc.update("""
+                        with run as (
+                            update ai_run set step_count = step_count + 1, updated_at = now()
+                            where id = ?
+                            returning id, step_count)
+                        insert into ai_run_step (run_id, seq, step_type, name, attempt, args_summary, result_summary,
+                                                  error_code, latency_ms, input_tokens, cached_input_tokens,
+                                                  output_tokens, reasoning_tokens, created_at)
+                        select id, step_count, ?::varchar, ?::varchar, ?::int, ?::text, ?::text, ?::varchar, ?::int,
+                               ?::int, ?::int, ?::int, ?::int, now()
+                        from run""",
+                runId, step.type().name(), Texts.cut(step.name() == null ? "-" : step.name(), NAME_LIMIT),
+                step.attempt(), Texts.cut(step.args(), SUMMARY_LIMIT), Texts.cut(step.result(), SUMMARY_LIMIT),
+                Texts.cut(step.errorCode(), CODE_LIMIT),
+                step.latencyMs() == null ? null : (int) Math.min(Integer.MAX_VALUE, step.latencyMs()),
+                tokens == null ? null : tokens.input(), tokens == null ? null : tokens.cached(),
+                tokens == null ? null : tokens.output(), tokens == null ? null : tokens.reasoning()));
+        langfuse.step(runId, step);
     }
 
-    /** Closes the run with a terminal status. errorCode and message are null on success. */
-    public void finishRun(UUID runId, AiRunStatus status, String errorCode, String message) {
+    private static void write(String what, Runnable statement) {
         try {
-            tx.executeWithoutResult(s -> runs.findForUpdate(runId).ifPresentOrElse(
-                    run -> run.finish(status, truncate(errorCode, CODE_LIMIT), message, Instant.now()),
-                    () -> log.warn("finishRun: run {} not found", runId)));
-        } catch (Exception e) {
-            log.error("Failed to finish run {} as {}", runId, status, e);
+            statement.run();
+        } catch (RuntimeException e) {
+            log.error("ai trace: could not {}", what, e);
         }
-    }
-
-    private void writeStep(UUID runId, String name, java.util.function.IntFunction<AiStep> factory) {
-        try {
-            tx.executeWithoutResult(status -> {
-                AiRun run = runs.findForUpdate(runId).orElse(null);
-                if (run == null) {
-                    log.warn("Step {} for unknown run {} dropped", name, runId);
-                    return;
-                }
-                steps.save(factory.apply(run.incrementSteps()));
-            });
-        } catch (Exception e) {
-            log.error("Failed to record step {} of run {}", name, runId, e);
-        }
-    }
-
-    public static String truncate(String s, int max) {
-        if (s == null || s.length() <= max) return s;
-        return s.substring(0, max - 1) + "…";
     }
 }

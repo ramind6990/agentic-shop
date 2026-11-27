@@ -1,13 +1,13 @@
 package com.rmrx.agenticshop.ai.events.sse;
 
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.rmrx.agenticshop.ai.config.AiProperties;
-import com.rmrx.agenticshop.ai.contract.event.AgentEvent;
+import com.rmrx.agenticshop.ai.events.AiEventProperties;
+import com.rmrx.agenticshop.ai.events.ChatResponse;
 import com.rmrx.agenticshop.ai.events.RunEventBus;
 import com.rmrx.agenticshop.ai.events.RunEventSubscriber;
 import com.rmrx.agenticshop.ai.events.RunSubscription;
 import jakarta.annotation.PreDestroy;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectWriter;
@@ -16,9 +16,6 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.time.Duration;
-import java.time.Instant;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -29,36 +26,32 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Streams a run's events as Server-Sent Events. Frames: {@code id:} = seq, {@code event:} = the type discriminator
- * (RUN_STARTED, TOKEN_DELTA, …), {@code data:} = the event JSON with its {@code type} field. The stream completes
- * after FINAL or ERROR; a heartbeat comment keeps idle connections open. A client disconnect only unsubscribes; the
- * run goes on. Access checks are the caller's job.
+ * Streams a run's events as Server-Sent Events. Frames: {@code id:} = seq, {@code event:} = the {@link ChatResponse}
+ * type (REPLY, INTERACTION, PROGRESS, ERROR), {@code data:} = the {@link ChatResponse} JSON. The stream completes after
+ * the first non-PROGRESS event; a heartbeat comment keeps idle connections open. A client disconnect only
+ * unsubscribes; the run goes on. Access checks are the caller's job.
  */
-@Slf4j
-@Component
+@Component("aiSseRunEventTransport")
 public class SseRunEventTransport {
 
-    public static final String RUN_NOT_LIVE = "RUN_NOT_LIVE";
+    public static final String NOT_LIVE_MESSAGE = "This run is no longer streaming; load the conversation instead.";
+    private static final Logger log = LoggerFactory.getLogger(SseRunEventTransport.class);
     private static final Duration TIMEOUT_MARGIN = Duration.ofSeconds(30);
 
     private final RunEventBus bus;
     private final ObjectWriter writer;
-    private final Map<Class<?>, String> typeNames = new HashMap<>();
     private final long timeoutMs;
     private final long heartbeatMs;
     private final ScheduledExecutorService heartbeats = Executors.newSingleThreadScheduledExecutor(
-            Thread.ofPlatform().daemon().name("sse-heartbeat").factory());
+            Thread.ofPlatform().daemon().name("ai-sse-heartbeat").factory());
     /** Heartbeat writes may block on a slow client; they run here, not on the scheduler thread. */
     private final ExecutorService writes = Executors.newVirtualThreadPerTaskExecutor();
 
-    public SseRunEventTransport(RunEventBus bus, JsonMapper mapper, AiProperties props) {
+    public SseRunEventTransport(RunEventBus bus, JsonMapper mapper, AiEventProperties props) {
         this.bus = bus;
-        this.writer = mapper.writerFor(AgentEvent.class);
-        this.timeoutMs = props.agent().turnTimeout().plus(TIMEOUT_MARGIN).toMillis();
-        this.heartbeatMs = Math.max(1_000L, props.events().heartbeat().toMillis());
-        for (JsonSubTypes.Type t : AgentEvent.class.getAnnotation(JsonSubTypes.class).value()) {
-            typeNames.put(t.value(), t.name());
-        }
+        this.writer = mapper.writerFor(ChatResponse.class);
+        this.timeoutMs = props.maxOpen().plus(TIMEOUT_MARGIN).toMillis();
+        this.heartbeatMs = Math.max(1_000L, props.heartbeat().toMillis());
     }
 
     @PreDestroy
@@ -84,11 +77,11 @@ public class SseRunEventTransport {
         return emitter;
     }
 
-    /** A one-event stream telling the client the run is no longer streamed (finished and evicted, or elsewhere). */
+    /** A one-event stream telling the client the run is not streamed (finished and evicted, or unknown). */
     public SseEmitter notLive(UUID runId) {
         SseEmitter emitter = new SseEmitter(timeoutMs);
-        AgentEvent error = new AgentEvent.Error(runId, 0, Instant.now(), RUN_NOT_LIVE,
-                "This run is no longer streaming; load the conversation instead.", false);
+        ChatResponse error = ChatResponse.error(runId, null, 0L, new ChatResponse.Error(
+                ChatResponse.ErrorCode.RUN_NOT_LIVE, NOT_LIVE_MESSAGE, false));
         try {
             emitter.send(frame(error));
             emitter.complete();
@@ -98,10 +91,10 @@ public class SseRunEventTransport {
         return emitter;
     }
 
-    private SseEmitter.SseEventBuilder frame(AgentEvent event) {
+    private SseEmitter.SseEventBuilder frame(ChatResponse event) {
         return SseEmitter.event()
-                .id(Long.toString(event.seq()))
-                .name(typeNames.getOrDefault(event.getClass(), "EVENT"))
+                .id(String.valueOf(event.seq()))
+                .name(event.type().name())
                 .data(writer.writeValueAsString(event));
     }
 
@@ -132,12 +125,12 @@ public class SseRunEventTransport {
         }
 
         @Override
-        public void onEvent(AgentEvent event) {
+        public void onEvent(ChatResponse event) {
             lock.lock();
             try {
                 if (done) throw new IllegalStateException("stream closed");
                 emitter.send(frame(event));
-                if (event instanceof AgentEvent.Final || event instanceof AgentEvent.Error) finishLocked();
+                if (event.last()) finishLocked();
             } catch (IOException e) {
                 // client went away; the container reports it via onError/onCompletion as well
                 done = true;

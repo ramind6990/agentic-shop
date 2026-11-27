@@ -1,4 +1,4 @@
--- Test data for the ai2 guardrails, on the demo customer customer_1 (see V113):
+-- Test data for the ai guardrails, on the demo customer customer_1 (see V113):
 --   * reviews of the product of customer_1's DELIVERED demo order (AS-<yymmdd>-910004): one with an indirect prompt
 --     injection, one with hidden instructions in invisible Unicode tag characters, one with contact data (PII), and an
 --     ordinary one;

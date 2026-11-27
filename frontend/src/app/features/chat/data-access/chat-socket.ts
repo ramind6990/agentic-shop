@@ -11,7 +11,7 @@ const MAX_BACKOFF_MS = 15_000;
 
 /**
  * The chat WebSocket of one page: fetches a one-time connect token (REST, with the JWT), opens
- * `/api/ai2/ws?connectToken=…` and reconnects with backoff (a new token each time) until the page is left. Every
+ * `/api/ai/ws?connectToken=…` and reconnects with backoff (a new token each time) until the page is left. Every
  * message of every run of the user arrives on {@link messages}; {@link opened} counts the openings, so the page can
  * reload what it missed while the socket was down.
  */
@@ -72,7 +72,7 @@ export class ChatSocket {
     if (this.stopped) return;
     const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(
-      `${scheme}://${location.host}/api/ai2/ws?connectToken=${encodeURIComponent(token)}`,
+      `${scheme}://${location.host}/api/ai/ws?connectToken=${encodeURIComponent(token)}`,
     );
     this.ws = ws;
     ws.onopen = () => {

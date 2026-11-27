@@ -23,7 +23,11 @@ create table ticket_message (
     author_type  varchar(20) not null,
     body         text        not null,
     internal     boolean     not null default false,
-    created_at   timestamptz not null
+    created_at   timestamptz not null,
+    -- shape of the message: TEXT, or a structured payload (agent envelope or action detail)
+    kind           varchar(20) not null default 'TEXT',
+    payload        jsonb,
+    schema_version int
 );
 
 create table account_flag (

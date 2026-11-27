@@ -1,5 +1,7 @@
 # AI support agent — feature plan (phases 0-2)
 
+> **Removed 2026-11-27:** the `ai` package described here (and its migrations, then numbered V8–V11) was deleted; the redesigned agent ([ai2-agent.md](ai2-agent.md)), since renamed from `ai2` to `ai`, replaces it. Kept as history.
+
 Feature list (F1-F14), decisions and out-of-scope items for the first agentic stage of AgenticShop. Implementation order lives in [ai-implementation-steps.md](ai-implementation-steps.md). The long-term roadmap (phases 0-9) is in ShopOps_Agentic_Practice_Plan.pdf.
 
 ## Context

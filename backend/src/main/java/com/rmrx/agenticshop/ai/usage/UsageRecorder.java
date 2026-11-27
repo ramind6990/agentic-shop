@@ -1,110 +1,37 @@
 package com.rmrx.agenticshop.ai.usage;
 
-import com.rmrx.agenticshop.ai.usage.entity.AiModelPrice;
-import com.rmrx.agenticshop.ai.usage.entity.AiTokenType;
-import com.rmrx.agenticshop.ai.usage.entity.AiUsage;
-import com.rmrx.agenticshop.ai.usage.entity.AiUsagePurpose;
-import com.rmrx.agenticshop.ai.usage.repository.AiModelPriceRepository;
-import com.rmrx.agenticshop.ai.usage.repository.AiUsageRepository;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.TransactionDefinition;
-import org.springframework.transaction.support.TransactionTemplate;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.Instant;
-import java.util.Optional;
-import java.util.regex.Pattern;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Component;
 
 /**
- * Writes one ledger row per billable call, priced with the price rows in effect now. Each row is written in its own
- * transaction (REQUIRES_NEW, so it survives a rolled-back turn), and a failure is logged, never thrown into the
- * model call.
+ * Writes the token ledger ({@code ai_usage}): one row per successful model call. Each row commits on its own; a
+ * failure is logged and never reaches the model call.
  */
-@Slf4j
-@Service
+@Component("aiUsageRecorder")
 public class UsageRecorder {
 
-    public static final String OPENAI = "openai";
+    private static final Logger log = LoggerFactory.getLogger(UsageRecorder.class);
 
-    private static final BigDecimal MILLION = BigDecimal.valueOf(1_000_000);
-    private static final int COST_SCALE = 8;
-    /** Providers answer with dated snapshot names (gpt-5-mini-2025-08-07); prices are kept per base model. */
-    private static final Pattern DATE_SUFFIX = Pattern.compile("-\\d{4}-\\d{2}-\\d{2}$");
+    private final JdbcTemplate jdbc;
 
-    private final AiModelPriceRepository prices;
-    private final AiUsageRepository usages;
-    private final TransactionTemplate tx;
-
-    public UsageRecorder(AiModelPriceRepository prices, AiUsageRepository usages,
-                         PlatformTransactionManager transactionManager) {
-        this.prices = prices;
-        this.usages = usages;
-        this.tx = new TransactionTemplate(transactionManager);
-        this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    public UsageRecorder(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
     }
 
-    /**
-     * Records one call. cachedInputTokens is the part of inputTokens served from the prompt cache; it is billed at
-     * the cached price and the rest of the input at the input price. A null scope is recorded as CHAT with no user,
-     * with a warning. Returns the saved row, or empty if recording failed.
-     */
-    public Optional<AiUsage> record(String provider, String model, int inputTokens, int cachedInputTokens,
-                                    int outputTokens, RunScope scope, boolean partial) {
-        RunScope effective = scope;
+    public void record(UsageScope scope, String provider, String model, TokenCounts tokens) {
         try {
-            if (effective == null) {
-                log.warn("AI usage without a RunScope ({} {}, {} in / {} out tokens): recorded as CHAT with no user",
-                        provider, model, inputTokens, outputTokens);
-                effective = RunScope.system(AiUsagePurpose.CHAT);
-            }
-            RunScope s = effective;
-            return Optional.ofNullable(tx.execute(status ->
-                    save(provider, model, inputTokens, cachedInputTokens, outputTokens, s, partial)));
-        } catch (Exception e) {
-            log.error("Failed to record AI usage ({} {}, {} in / {} cached / {} out tokens, scope {})",
-                    provider, model, inputTokens, cachedInputTokens, outputTokens, effective, e);
-            return Optional.empty();
+            jdbc.update("""
+                            insert into ai_usage (user_id, conversation_id, run_id, issuer, purpose, provider, model,
+                                                   input_tokens, cached_input_tokens, output_tokens, reasoning_tokens,
+                                                   created_at)
+                            values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now())""",
+                    scope.userId(), scope.conversationId(), scope.runId(), scope.issuer().name(),
+                    scope.purpose().name(), provider, model, tokens.input(), tokens.cached(), tokens.output(),
+                    tokens.reasoning());
+        } catch (RuntimeException e) {
+            log.error("ai: could not record usage ({} {}, {}) for {}", provider, model, tokens, scope, e);
         }
-    }
-
-    private AiUsage save(String provider, String model, int input, int cached, int output, RunScope scope,
-                         boolean partial) {
-        Instant now = Instant.now();
-        int safeInput = Math.max(0, input);
-        int safeCached = Math.max(0, Math.min(cached, safeInput));
-        int safeOutput = Math.max(0, output);
-
-        Priced in = price(provider, model, AiTokenType.INPUT, safeInput - safeCached, now);
-        Priced cachedIn = price(provider, model, AiTokenType.CACHED_INPUT, safeCached, now);
-        Priced out = price(provider, model, AiTokenType.OUTPUT, safeOutput, now);
-        BigDecimal cost = in.cost().add(cachedIn.cost()).add(out.cost()).setScale(COST_SCALE, RoundingMode.HALF_UP);
-
-        return usages.save(AiUsage.record(scope.userId(), scope.ticketId(), scope.runId(), scope.purpose(),
-                provider, model, safeInput, safeCached, safeOutput, cost,
-                in.priceId(), cachedIn.priceId(), out.priceId(), partial, now));
-    }
-
-    /** cost = tokens x usd_per_million / 1,000,000; a missing price row costs 0 (warned when tokens were used). */
-    private Priced price(String provider, String model, AiTokenType type, int tokens, Instant now) {
-        Optional<AiModelPrice> price = prices.findEffective(provider, model, type, now);
-        if (price.isEmpty()) {
-            String base = DATE_SUFFIX.matcher(model).replaceFirst("");
-            if (!base.equals(model)) price = prices.findEffective(provider, base, type, now);
-        }
-        if (price.isEmpty()) {
-            if (tokens > 0) {
-                log.warn("No {} price for {} {}: {} tokens recorded at cost 0", type, provider, model, tokens);
-            }
-            return new Priced(null, BigDecimal.ZERO);
-        }
-        BigDecimal cost = BigDecimal.valueOf(tokens).multiply(price.get().getUsdPerMillion())
-                .divide(MILLION, COST_SCALE, RoundingMode.HALF_UP);
-        return new Priced(price.get().getId(), cost);
-    }
-
-    private record Priced(Long priceId, BigDecimal cost) {
     }
 }

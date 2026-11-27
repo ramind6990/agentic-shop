@@ -24,7 +24,6 @@
         <springdoc.version>3.1.1</springdoc.version>
         <langchain4j.version>1.24.0</langchain4j.version>
         <langgraph4j.version>1.9.10</langgraph4j.version>
-        <pgvector.version>0.1.6</pgvector.version>
     </properties>
 
     <dependencyManagement>
@@ -105,7 +104,7 @@
             <version>${mapstruct.version}</version>
         </dependency>
 
-        <!-- AI: plain libraries, wired manually in ai.config (no Spring starters) -->
+        <!-- AI: plain libraries, wired manually in ai (no Spring starters) -->
         <dependency>
             <groupId>dev.langchain4j</groupId>
             <artifactId>langchain4j</artifactId>
@@ -122,13 +121,8 @@
             <groupId>org.bsc.langgraph4j</groupId>
             <artifactId>langgraph4j-langchain4j</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.pgvector</groupId>
-            <artifactId>pgvector</artifactId>
-            <version>${pgvector.version}</version>
-        </dependency>
 
-        <!-- ai2 LLM tracing to Langfuse: a dedicated OpenTelemetry SDK (OTLP over HTTP), not Spring's observability;
+        <!-- ai LLM tracing to Langfuse: a dedicated OpenTelemetry SDK (OTLP over HTTP), not Spring's observability;
              versions from Spring Boot's opentelemetry-bom -->
         <dependency>
             <groupId>io.opentelemetry</groupId>

@@ -1,7 +1,7 @@
 # ai2 — the redesigned support agent
 
 `backend/src/main/java/com/rmrx/agenticshop/ai2` is a step-by-step redesign of the AI support agent. The old `ai`
-package is left untouched; ai2 has its own beans (named `ai2…` where a name would clash), tables (`ai2_…`), model
+package is left untouched; ai2 has its own beans (named `ai2…` where a name would clash), tables (`ai_…`), model
 bean, prompt and endpoints (`/api/ai2/…`).
 
 This document describes what exists today. Open items are listed at the end.
@@ -73,8 +73,8 @@ answered). A conversation has at most one active run at a time.
 | `ai2.activerun` | `ActiveRun`, `ActiveRunRegistry` |
 | `ai2.checkpointer` | `JdbcCheckpointSaver` |
 | `ai2.memory` | `HistoryProvider` (also `memoryState`), `MemoryState`, `ConversationSummarizer`, `HistoryProjection`, `ConversationMemoryStore`, `Ai2MemoryProperties` |
-| `ai2.trace` | `TraceRecorder` (writes `ai2_run` / `ai2_run_step`), `TraceStep`, `StepType`, `RunStatus`, `ErrorCodes`, `TraceQueries`, `TraceViews` |
-| `ai2.usage` | `UsageRecorder` (writes `ai2_usage`), `UsageScope`, `UsageIssuer`, `UsagePurpose`, `TokenCounts`, `TokenTotals`, `UsageQueries`, `UsageService`, `UsageViews` |
+| `ai2.trace` | `TraceRecorder` (writes `ai_run` / `ai_run_step`), `TraceStep`, `StepType`, `RunStatus`, `ErrorCodes`, `TraceQueries`, `TraceViews` |
+| `ai2.usage` | `UsageRecorder` (writes `ai_usage`), `UsageScope`, `UsageIssuer`, `UsagePurpose`, `TokenCounts`, `TokenTotals`, `UsageQueries`, `UsageService`, `UsageViews` |
 | `ai2.web` | `ConversationController`, `UsageController` (usage + traces), `RunEventsController`, `WsConnectTokenController`, `DevToolsController` (dev only), `SendMessageRequest`, `AnswerRequest` |
 
 ---
@@ -195,7 +195,7 @@ response and the tool result its `finalReferenceToDisplay.ref` names:
   filters have no block: the model reads "not shown to the user" on their ref line.
 - List items are narrowed to `selectedItemIdentifiers` (empty = all), with the ids of `ToolResponse.itemIdentifiers()`
   (tracking: tracking numbers).
-- The timeline still stores the raw response and `ReplyDisplay` (unchanged). Envelopes stored before V18 were
+- The timeline still stores the raw response and `ReplyDisplay` (unchanged). Envelopes stored before V14 were
   migrated to the `block` shape.
 
 ---
@@ -294,7 +294,7 @@ more details from the customer go into the same ticket → support T1 lists the 
 re-checks the facts, issues the refund (within its limit) and resolves the ticket with a message to the customer →
 the customer asks the agent for news and gets the resolution. Over the T1 limit, the refund is refused and
 `escalate_ticket` hands the ticket to T2. Domain: `TicketCommandService` (open with dedup, take, note, reply,
-escalate, resolve), `TicketLookup`, `TicketSearch`; `ticket.conversation_id` (Flyway V17).
+escalate, resolve), `TicketLookup`, `TicketSearch`; `ticket.conversation_id` (Flyway V13).
 
 Dev-only: with `app.ai2.dev-endpoints=true` (launch config `backend-dev-tools`), `GET /api/ai2/dev/tools` lists the
 caller's catalog and `POST /api/ai2/dev/tools/{name}` runs one tool as the caller (no model, no approval step).
@@ -330,11 +330,11 @@ Abandoning marks the question NOT_ANSWERED and drops the run with its checkpoint
 
 ## 7. Conversations and chat messages
 
-- A first message without an id creates the conversation (`ai2_conversation`, owned by the user). Every other call
+- A first message without an id creates the conversation (`ai_conversation`, owned by the user). Every other call
   checks ownership: another user's conversation is 404.
 - A CLOSED conversation (memory over its hard limit) refuses new messages with 409 "This conversation is full; please
   start a new one".
-- Everything the user sees is stored in `ai2_conversation_message`:
+- Everything the user sees is stored in `ai_conversation_message`:
 
 | Kind | When | Content |
 |---|---|---|
@@ -352,11 +352,11 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
 
 | Table | Purpose |
 |---|---|
-| `ai2_conversation` | conversations (user, OPEN/CLOSED) |
-| `ai2_active_run` | the one active run per conversation — the conversation's lock; status RUNNING/PAUSED, pending interaction (JSON) |
-| `ai2_checkpoint` | langgraph4j state after each node (thread = run id), serialized with `LC4jStateSerializer` |
-| `ai2_conversation_message` | the chat timeline |
-| `ai2_conversation_memory` | summary of older messages + the last message it covers |
+| `ai_conversation` | conversations (user, OPEN/CLOSED) |
+| `ai_active_run` | the one active run per conversation — the conversation's lock; status RUNNING/PAUSED, pending interaction (JSON) |
+| `ai_checkpoint` | langgraph4j state after each node (thread = run id), serialized with `LC4jStateSerializer` |
+| `ai_conversation_message` | the chat timeline |
+| `ai_conversation_memory` | summary of older messages + the last message it covers |
 
 - `ActiveRunRegistry` makes every change one atomic statement (`insert … on conflict do nothing`, a guarded update
   for resume, `delete … returning` for abandon), so concurrent requests cannot both win.
@@ -364,11 +364,11 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
 - A failed checkpoint write fails the run (pausing and resuming depend on it).
 - At startup, runs still RUNNING are dropped (cut off by the previous shutdown) and get a FAILED reply ("this reply
   was interrupted"); PAUSED runs stay and can still be answered — a paused approval survives a restart.
-- `ai2_run` (one row per run, kept after the active run row is gone: status, prompt version, model, step count, error),
-  `ai2_run_step` (the run's trace, see section 10) and `ai2_usage` (the token ledger) are written by `TraceRecorder`
+- `ai_run` (one row per run, kept after the active run row is gone: status, prompt version, model, step count, error),
+  `ai_run_step` (the run's trace, see section 10) and `ai_usage` (the token ledger) are written by `TraceRecorder`
   and `UsageRecorder`, each write committing on its own and never failing the run.
-- Migrations: `V12__ai2_active_run_checkpoint.sql`, `V13__ai2_conversation_memory.sql`, `V14__ai2_message_reply.sql`,
-  `V18__ai2_trace_usage.sql`.
+- Migrations: `V8__ai_active_run_checkpoint.sql`, `V9__ai_conversation_memory.sql`, `V10__ai_message_reply.sql`,
+  `V14__ai_trace_usage.sql`.
 
 ---
 
@@ -414,7 +414,7 @@ Trace and usage are written in four places only:
 
 | Where | What |
 |---|---|
-| `ModelGateway` | every model attempt → MODEL step (attempt n, request / response summary, latency, tokens or error code); every successful one → an `ai2_usage` row billed to its `UsageScope` |
+| `ModelGateway` | every model attempt → MODEL step (attempt n, request / response summary, latency, tokens or error code); every successful one → an `ai_usage` row billed to its `UsageScope` |
 | `ToolCallTracker` | every executed tool → TOOL step (arguments, the result text the model got, latency, `TOOL_ERROR`) |
 | `OutputValidationNode` | rejected outputs and dropped calls → VALIDATION step |
 | `RunRecorder` | run start / resume (INPUT step), pause (INTERACTION), reply (REPLY), failure (ERROR + run FAILED with code and message), stop (CANCELLED), abandon (ABANDONED), interrupted by a restart |
@@ -446,7 +446,7 @@ launch config `backend-langfuse` turns it on). The Postgres trace stays the sour
   flushed on shutdown. A failed export is logged by the SDK and never touches the run.
 - **Hook points**: `TraceRecorder` forwards run start / pause / end and every non-model step to `LangfuseExporter`;
   `ModelGateway` reports each model attempt itself, with the full request and response.
-- **Shape**: one trace per run, trace id = `ai2_run.id` without dashes (`RunTraceIds`), so a paused and resumed run
+- **Shape**: one trace per run, trace id = `ai_run.id` without dashes (`RunTraceIds`), so a paused and resumed run
   (even across a restart) stays one trace. One `agent` span per segment (start/resume → pause/end; "ai2 run (resumed)"
   after an answer), its input = the user's message (or question + answer), output = the reply text. Under it:
   `generation` per model attempt (named chat / summary / guard: note; model, parameters, usage, full messages in
@@ -716,7 +716,7 @@ caller (`AccessScope.runAs`), one tool catalog per audience, approvals before wr
 | Indirect injection + PII in tool data | `ToolCallExecutor` → `ToolOutputGuard` | Every `@FreeText` field of a result's agent summary (reviews, descriptions, ticket messages, reasons, notes) is sanitized, PII-redacted (`PiiRedactor`: email, phone, Luhn card, IBAN) and screened (patterns, classifier on SUSPECT, cached by hash). An injected text becomes `[hidden by the shop: …]`. The displayed result keeps the full data. |
 | PII minimization | the contracts' `toAgentSummary()` | Typed fields: addresses without recipient/street/postal code (`Address.forAgent`), masked email/phone (`PiiMask`). The summarizer (`summary-v2`) and the trace (`ToolCallTracker`) are redacted too. |
 | Pre-approval check | `OutputValidationNode` → `SensitivePrechecks` | Before the approval question, the domain's read-only checks (`RefundCommandService.check`, `RefundApprovalService.checkRequest/checkDecision`, `OrderCommandService.checkCancel/checkChangeAddress`, `TicketCommandService.checkOpen`) run as the caller. An impossible call gets an error result instead of an approval card; an allowed one may add a note to the approval detail (`RunState.APPROVAL_NOTES`). |
-| Tiered (four-eyes) refunds | domain `RefundApprovalService` + tools `request_refund_approval`, `search_refund_approvals`, `approve_refund_request`, `reject_refund_request` | A refund above the caller's limit (`RefundLimits`: T1 100, T2 1000, FINANCE/ADMIN unlimited) becomes a `refund_approval` request (RFA-0000001, Flyway V19). A colleague whose limit covers it approves (the refund is issued with them as issuer) or rejects; never the requester (also a DB check). Async on purpose: a paused run waits for its own user only. |
+| Tiered (four-eyes) refunds | domain `RefundApprovalService` + tools `request_refund_approval`, `search_refund_approvals`, `approve_refund_request`, `reject_refund_request` | A refund above the caller's limit (`RefundLimits`: T1 100, T2 1000, FINANCE/ADMIN unlimited) becomes a `refund_approval` request (RFA-0000001, Flyway V15). A colleague whose limit covers it approves (the refund is issued with them as issuer) or rejects; never the requester (also a DB check). Async on purpose: a paused run waits for its own user only. |
 | Loop detection | `OutputValidationNode` → `LoopDetector` | Blocks a tool that already failed twice, or a read tool called 5 times with other arguments. Escalates after 3 failed calls, 2 steps without any result, or a call to a tool it was told to stop calling. |
 | Code-forced hand-off | `OutputValidationNode` / `ModelCallNode` → `ForcedEscalation` | After an escalation (`RunState.ESCALATION`), a customer run's next call offers only `escalate_to_human` (required) with a note; the model writes the summary, the customer approves it, then the final reply runs without tools. Staff runs answer without tools. A failed hand-off is tried again; escalation has 3 extra model calls. |
 | Output: grounding, links, amounts | `OutputValidationNode` → `OutputGuard` | Order, ticket, approval and tracking numbers in the reply must appear in the evidence (`ReplyEvidence`: user facts, history, this run's messages); no links outside `allowed-link-hosts`; amounts in SHADOW. |

@@ -11,7 +11,7 @@ import { ConversationDetail, ConversationSummary, ConversationUsage } from '../m
 @Injectable({ providedIn: 'root' })
 export class ChatApi {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = '/api/ai2';
+  private readonly baseUrl = '/api/ai';
 
   /** Most recently active first. */
   list(): Observable<ConversationSummary[]> {
