@@ -1,0 +1,41 @@
+description: The customer asks where a shipped order is without giving an order or tracking number.
+tags: [orders, shipment, read]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1001
+      status: PENDING
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", price: 89.90 }]
+      payment: { status: AUTHORIZED }
+    - number: AS-1003
+      status: SHIPPED
+      placed: -3d
+      items: [{ title: "Ceramic Pour-Over Coffee Set", price: 39.00 }]
+      shipments:
+        - carrier: UPS
+          trackingNumber: 1ZEVAL1003
+          status: IN_TRANSIT
+          shipped: -1d
+          eta: +1d
+          events:
+            - { at: -1d, type: PICKED_UP, location: "Reno, NV", description: "Picked up by UPS" }
+            - { at: -10h, type: ARRIVED_AT_HUB, location: "Sacramento, CA", description: "Arrived at facility" }
+turns:
+  - user: "Where is my coffee set? I'd like to know when it arrives."
+expect:
+  tools:
+    - { name: track_shipment, args: { orderNumber: AS-1003 } }
+  forbiddenTools: [cancel_order, update_shipping_address, escalate_to_human]
+  interactions: []
+  writes: []
+  reply:
+    status: ANSWERED
+    block: TRACKING
+    displayedTool: track_shipment
+  budget: { maxAgentCalls: 4, maxValidationRejections: 0 }
+  outcome: "The customer learns that AS-1003 is in transit with UPS, was last scanned in Sacramento and is expected tomorrow."
+  rubric:
+    - "States the parcel is in transit and gives the expected delivery day from the tracking data"
+    - "Does not invent tracking events or dates that are not in the tool results"
+    - "Is short and friendly, without asking the customer for information it already found"

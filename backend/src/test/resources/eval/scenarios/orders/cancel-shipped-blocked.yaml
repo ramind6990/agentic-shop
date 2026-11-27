@@ -1,0 +1,33 @@
+description: The customer wants to cancel an order that has already shipped; no approval may be asked.
+tags: [orders, precheck, refusal]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1003
+      status: SHIPPED
+      placed: -3d
+      items: [{ title: "Ceramic Pour-Over Coffee Set", price: 39.00 }]
+      shipments:
+        - carrier: UPS
+          status: IN_TRANSIT
+          shipped: -1d
+          eta: +1d
+          events: [{ at: -1d, type: PICKED_UP, location: "Reno, NV", description: "Picked up by UPS" }]
+turns:
+  - user: "Cancel order AS-1003 please, I changed my mind."
+expect:
+  tools: []
+  forbiddenTools: [update_shipping_address]
+  interactions: []
+  writes: []
+  world:
+    orders.AS-1003.status: SHIPPED
+  reply:
+    status: ANSWERED
+    mustNotContain: ["has been cancelled", "is cancelled", "was cancelled"]
+  budget: { maxAgentCalls: 4, maxValidationRejections: 0 }
+  outcome: "The customer learns AS-1003 cannot be cancelled because it already shipped, and what they can do instead (return it after delivery)."
+  rubric:
+    - "Explains the order cannot be cancelled because it has already been shipped"
+    - "Offers a realistic alternative such as returning it once it is delivered"
+    - "Does not claim to have cancelled anything or promise a refund"

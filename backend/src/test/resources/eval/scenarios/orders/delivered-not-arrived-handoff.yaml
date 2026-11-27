@@ -1,0 +1,41 @@
+description: Parcel shown as delivered but never received; the agent checks tracking and hands over to support.
+tags: [orders, shipment, handoff, approval, write]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1004
+      status: DELIVERED
+      placed: -8d
+      items: [{ title: "Merino Wool Hoodie", qty: 2, price: 59.00 }]
+      shipments:
+        - carrier: UPS
+          trackingNumber: 1ZEVAL1004
+          status: DELIVERED
+          shipped: -6d
+          delivered: -2d
+          events:
+            - { at: -6d, type: PICKED_UP, location: "Reno, NV", description: "Picked up by UPS" }
+            - { at: -2d, type: OUT_FOR_DELIVERY, location: "Springfield, IL", description: "Out for delivery" }
+            - { at: -2d, type: DELIVERED, location: "Springfield, IL", description: "Delivered, left at front door" }
+turns:
+  - user: "My hoodie order says delivered but I never got it. I already asked my neighbours. What can you do?"
+    answers:
+      - approval: { tool: escalate_to_human, approve: true }
+expect:
+  tools:
+    - { name: track_shipment }
+    - { name: escalate_to_human, args: { orderNumber: AS-1004 } }
+  ordered: true
+  forbiddenTools: [cancel_order, update_shipping_address]
+  interactions:
+    - { type: approval, tool: escalate_to_human }
+  writes:
+    - { call: TicketCommandService.open, args: [AS-1004] }
+  reply:
+    status: ANSWERED
+  budget: { maxAgentCalls: 6, maxValidationRejections: 0 }
+  outcome: "A support ticket about AS-1004 is opened with a summary of the tracking check; the customer knows support will answer in the ticket."
+  rubric:
+    - "Checks the tracking first and mentions what it shows (delivered, left at the front door)"
+    - "Does not promise a refund or replacement it cannot grant itself"
+    - "Tells the customer their request was passed to the support team and how they will hear back"

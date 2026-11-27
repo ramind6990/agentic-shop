@@ -1,0 +1,20 @@
+[project]
+name = "agenticshop-evals"
+version = "0.1.0"
+description = "Scores the agent eval transcripts written by backend MockDomainEvalTest, with DeepEval"
+requires-python = ">=3.11"
+dependencies = [
+    "deepeval>=4.3,<5",
+    "pytest>=8",
+    "pydantic>=2",
+    # DeepEval's local test-run cache needs shared file locks, which portalocker only has on Windows with pywin32
+    "pywin32>=306; sys_platform == 'win32'",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["."]
+python_files = ["test_*.py"]
+addopts = "-p no:cacheprovider"

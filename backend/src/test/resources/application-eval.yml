@@ -1,0 +1,27 @@
+# Profile "eval": the agent evals (MockDomainEvalTest). Its own database, never the dev one: EvalDatabaseGuard refuses
+# to run unless the database name ends with "_eval". Create it once:  CREATE DATABASE agenticshop_eval OWNER agenticshop;
+# The first run migrates and seeds it with a small seed (the mock tier reads no domain rows, only the seeded logins).
+spring:
+  datasource:
+    url: ${EVAL_DB_URL:jdbc:postgresql://localhost:5438/agenticshop_eval}
+  flyway:
+    placeholders:
+      seed_customers: 300
+      seed_sellers: 20
+      seed_products: 500
+      seed_orders: 2000
+      seed_tickets: 200
+
+app:
+  ai:
+    # eval traces are marked in Langfuse (when LANGFUSE_ENABLED is set)
+    langfuse:
+      environment: ${EVAL_LANGFUSE_ENVIRONMENT:eval}
+
+eval:
+  # where transcripts go: <output-dir>/<timestamp>/<scenario>__r<n>.json
+  output-dir: ${EVAL_OUTPUT_DIR:target/eval-runs}
+  # one run (until its reply, question or error) must end within this time
+  run-timeout: 240s
+  # pauses answered per turn before the harness gives up (loop protection)
+  max-pauses-per-turn: 6

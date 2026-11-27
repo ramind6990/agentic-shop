@@ -17,3 +17,9 @@ frontend/.angular/
 .DS_Store
 Thumbs.db
 .env
+
+# Agent evals (DeepEval, uv)
+evals/.venv/
+evals/results/
+.deepeval/
+__pycache__/

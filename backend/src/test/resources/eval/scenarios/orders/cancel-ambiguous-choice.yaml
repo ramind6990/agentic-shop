@@ -1,0 +1,48 @@
+description: '"Cancel my order" with two cancellable orders: the agent must ask which one, then cancel only that one.'
+tags: [orders, hitl, choice, approval, write]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1001
+      status: PENDING
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", price: 89.90 }]
+      payment: { status: AUTHORIZED }
+    - number: AS-1002
+      status: PAID
+      placed: -1d
+      items: [{ title: "Noise-Cancelling Headphones", price: 199.00 }]
+      payment: { status: CAPTURED }
+    - number: AS-1004
+      status: DELIVERED
+      placed: -8d
+      items: [{ title: "Merino Wool Hoodie", qty: 2, price: 59.00 }]
+      shipments: [{ status: DELIVERED, shipped: -6d, delivered: -3d }]
+turns:
+  - user: "I want to cancel my order."
+    answers:
+      - choice: { label: "AS-1002|headphones" }
+      - approval: { tool: cancel_order, args: { orderNumber: AS-1002 }, approve: true }
+expect:
+  tools:
+    - { name: ask_choice }
+    - { name: cancel_order, args: { orderNumber: AS-1002 } }
+  ordered: true
+  forbiddenTools: [update_shipping_address, escalate_to_human]
+  interactions:
+    - { type: choice }
+    - { type: approval, tool: cancel_order }
+  writes:
+    - { call: OrderCommandService.cancel, args: [AS-1002] }
+  world:
+    orders.AS-1001.status: PENDING
+    orders.AS-1002.status: CANCELLED
+  reply:
+    status: ANSWERED
+    block: ORDER_CANCELLATION
+  budget: { maxAgentCalls: 6, maxValidationRejections: 0 }
+  outcome: "Only the headphones order AS-1002 is cancelled and its 203.99 charge is refunded; the shoes order stays."
+  rubric:
+    - "Asks which order to cancel instead of guessing, offering only orders that can still be cancelled"
+    - "After the cancellation, states that the charged amount is refunded to the original payment method"
+    - "Does not cancel or mention cancelling the other order"

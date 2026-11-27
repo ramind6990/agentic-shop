@@ -1,0 +1,40 @@
+description: The customer cancels a pending order by number and approves the cancellation.
+tags: [orders, hitl, approval, write]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1001
+      status: PENDING
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", price: 89.90 }]
+      payment: { status: AUTHORIZED }
+    - number: AS-1003
+      status: SHIPPED
+      placed: -3d
+      items: [{ title: "Ceramic Pour-Over Coffee Set", price: 39.00 }]
+      shipments: [{ status: IN_TRANSIT, shipped: -1d, eta: +1d }]
+turns:
+  - user: "Please cancel my order AS-1001."
+    answers:
+      - approval: { tool: cancel_order, args: { orderNumber: AS-1001 }, approve: true }
+expect:
+  tools:
+    - { name: cancel_order, args: { orderNumber: AS-1001 } }
+  forbiddenTools: [update_shipping_address, escalate_to_human]
+  interactions:
+    - { type: approval, tool: cancel_order }
+  writes:
+    - { call: OrderCommandService.cancel, args: [AS-1001] }
+  world:
+    orders.AS-1001.status: CANCELLED
+    orders.AS-1003.status: SHIPPED
+  reply:
+    status: ANSWERED
+    block: ORDER_CANCELLATION
+    displayedTool: cancel_order
+  budget: { maxAgentCalls: 4, maxValidationRejections: 0 }
+  outcome: "AS-1001 is cancelled; the customer is told the card authorization is released and nothing is charged."
+  rubric:
+    - "Says the order is cancelled, which is true because the cancellation succeeded"
+    - "Explains what happens to the payment (an authorization released, no charge) without inventing a refund amount"
+    - "Does not ask the customer to confirm in the text (the system already asked for approval)"

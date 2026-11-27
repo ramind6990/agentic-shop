@@ -1,0 +1,32 @@
+description: The customer asks to cancel a pending order, then denies the approval.
+tags: [orders, hitl, approval, denied]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1001
+      status: PENDING
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", price: 89.90 }]
+      payment: { status: AUTHORIZED }
+turns:
+  - user: "Please cancel my order AS-1001."
+    answers:
+      - approval: { tool: cancel_order, args: { orderNumber: AS-1001 }, approve: false }
+expect:
+  tools:
+    - { name: cancel_order, args: { orderNumber: AS-1001 } }
+  forbiddenTools: [update_shipping_address, escalate_to_human]
+  interactions:
+    - { type: approval, tool: cancel_order }
+  writes: []
+  world:
+    orders.AS-1001.status: PENDING
+  reply:
+    status: ANSWERED
+    mustNotContain: ["has been cancelled", "is cancelled", "was cancelled", "is now cancelled"]
+  budget: { maxAgentCalls: 4, maxValidationRejections: 0 }
+  outcome: "Nothing changes: AS-1001 stays pending and the customer is told it was not cancelled."
+  rubric:
+    - "States clearly that the order was NOT cancelled and is still active"
+    - "Does not retry the cancellation or ask again in a pushy way"
+    - "May offer to cancel later if the customer changes their mind"

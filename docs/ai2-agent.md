@@ -730,3 +730,137 @@ after approval); T1 refund above limit → approval request with a precheck note
 cannot decide their own request, T2 cannot decide a Finance-level one. Launch config `backend-guard-test` runs with
 the input guard in SHADOW and a loop threshold of 1, to reproduce the hand-off. Test data: seed V114 (planted reviews
 on customer_1's delivered demo order product, an injected ticket on their shipped demo order).
+
+---
+
+## 16. Evals
+
+Two halves: **Java runs the scenarios, DeepEval scores them.** The Java harness drives real runs (real model, graph,
+guards, conversation service and ai tables) and writes one JSON transcript per scenario run; it does no scoring. A
+pytest + DeepEval suite (`evals/`) turns the transcripts into test cases and applies the metrics.
+
+```
+backend/src/test/resources/eval/scenarios/<family>/<name>.yaml
+        │  MockDomainEvalTest (JUnit @TestFactory, tag "eval", profile "eval")
+        ▼
+backend/target/eval-runs/<yyyyMMdd-HHmmss>/<family>__<name>__r<n>.json + manifest.json
+        │  evals/test_agent.py (DeepEval 4.3)
+        ▼
+evals/results/test_run_*.json + the console report
+```
+
+### Running
+
+Once: `CREATE DATABASE agenticshop_eval OWNER agenticshop;` on the dev Postgres. The first run migrates and seeds it
+with a small seed (`src/test/resources/application-eval.yml`). `EvalDatabaseGuard` stops the context before Flyway
+unless the database name ends with `_eval` (`EVAL_DB_URL` overrides the URL).
+
+```powershell
+mvn -f backend/pom.xml -Peval test "-Deval.include=orders/*" "-Deval.repeats=1"
+```
+
+```powershell
+$env:PYTHONUTF8 = "1"; uv run --project evals --python cpython-3.14-windows-x86_64-none deepeval test run evals/test_agent.py
+```
+
+- `eval.include`: comma-separated globs over scenario ids (`*` within a folder, `**` across); `eval.repeats`: runs per
+  scenario (`__r1`, `__r2` …). Plain `mvn test` excludes the tag and only checks that every scenario file parses
+  (`ScenarioFilesTest`). Evals call the paid model (agent + guard calls, ~20k tokens for a short scenario).
+- The DeepEval suite scores the newest run folder, or `EVAL_RUN_DIR`. `EVAL_SKIP_JUDGE=1` runs only the deterministic
+  metrics. The judge is `EVAL_JUDGE_MODEL` (default `AI_CHAT_MODEL`, else `gpt-6-luna`) through the Responses API,
+  optional `EVAL_JUDGE_REASONING`. `OPENAI_API_KEY` comes from the root `.env`; telemetry is off
+  (`DEEPEVAL_TELEMETRY_OPT_OUT`); no Confident AI login.
+- Windows on ARM: `grpcio` (a DeepEval dependency) has no ARM64 wheel, so the venv uses the x64 Python 3.14 (hence
+  `--python cpython-3.14-windows-x86_64-none`); `pywin32` is a dependency for DeepEval's file locks; `PYTHONUTF8=1`
+  for the console report.
+- With `LANGFUSE_ENABLED`, eval runs are traced with environment `eval`.
+
+### The mock tier (domain services mocked)
+
+`MockDomainEvalTest` declares the 14 domain services the tools and prechecks call as `@MockitoBean(types = …)`
+(`DomainMocks.TYPES`). Before each scenario the mocks are reset and the per-family stubs (`eval/world/*Stubs`) answer
+from the scenario's **world**, an in-memory, mutable model (`EvalWorld`: addresses, orders with items, payment and
+shipments, tickets). Everything else is real, including `AccessScope`: stubs apply visibility from the caller the
+tool runs as (a customer sees only their own rows; others get the domain's `NotFoundException`). Writes (`cancel`,
+`changeShippingAddress`, ticket `open`) mutate the world and are logged as `writes`; a rule refusal is logged as
+`rejected: <reason>` and throws `RuleViolationException`. Prechecks and `OrderService.actions` use the world order's
+`verdicts` (`ok` or a reason; a missing one defaults from the status, with the shop's wording). `faults` make a call
+throw (`timeout`, `unavailable` or a message) for N calls. A domain call no stub answers is a harness error (Mockito
+returned null). Families stubbed so far: orders, shipments (track), addresses, tickets (customer side).
+
+Actors are the seeded logins (`customer_1`, `support_t1_1` …, looked up by username); world rows belong to the actor
+unless `owner:` names another login. Times are relative to the scenario start (`now`, `-2h`, `+1d`).
+
+### Scenario file
+
+```yaml
+description: …
+tags: [orders, hitl, approval, write]
+actor: customer_1
+world:
+  addresses: [{ id: 501, label: Home, default: true }, { id: 502, label: Work, city: San Francisco }]
+  orders:
+    - number: AS-1001
+      status: PENDING            # OrderStatus
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", qty: 1, price: 89.90 }]
+      payment: { method: CARD, status: AUTHORIZED }
+      shipments: [{ carrier: UPS, status: IN_TRANSIT, shipped: -1d, eta: +1d, events: [{ at: -1d, type: PICKED_UP }] }]
+      verdicts: { cancel: ok, changeAddress: "…reason…", return: ok }
+  tickets: [{ subject: …, order: AS-1001, messages: [{ author: CUSTOMER, body: … }] }]
+  faults: [{ call: ShipmentService.track, error: timeout, times: 2 }]
+turns:
+  - user: "Please cancel my order AS-1001."
+    answers:                     # one per pause, in order
+      - approval: { tool: cancel_order, args: { orderNumber: AS-1001 }, approve: true }
+  - user: "…"
+    whilePaused: true            # the previous turn ended with `leave: true`: this message abandons the paused run
+expect: { … }                    # free-form for the scorers, see Metrics
+```
+
+Answers: `approval {tool, args, approve}` (tool and listed args must match the model's call), `choice {value | label |
+index}` (`label`: text in the option's value, label or description, `a|b` = either), `input {text}`, `yesNo {yes}`,
+`dismiss: true`, `leave: true`; `optional: true` skips the answer when the pause does not fit it (e.g. an address
+question the agent may or may not ask). A pause no answer fits is recorded as unexpected and dismissed, so the run
+ends.
+
+### Transcript
+
+`Transcript` (version 1): scenario info (id, actor role, prompt version, model), the `expect` section, and per turn
+the run segments (each ends with a pause or the end) with the model's tool calls, the interaction with the answer
+sent, and the reply. Tool calls come from `RecordingChatModel`, a wrapper around `aiChatModel` installed by a test
+`BeanPostProcessor`: exact call ids and arguments, the result text the model got, status
+`executed | failed | denied | blocked | not_executed | asked`. The reply holds the envelope status, block type and
+data, the stored `AgentResponse` (structured output) and the displayed tool + selected ids. Also: a trace digest per
+run (`ai_run_step`: validation rejections, guard steps, tool errors), usage by purpose (agent / guard / summary calls,
+tokens), the final world and its writes, unexpected interactions and harness errors. A JUnit test fails only on
+harness errors (timeout, pause loop, unstubbed call, inconsistent script).
+
+### Metrics
+
+`test_behaviour` (deterministic, threshold 1.0, an `LLMTestCase` with all tool calls):
+
+| Metric | `expect` keys | Checks |
+|---|---|---|
+| `ToolCorrectnessMetric` (DeepEval) | `tools`, `ordered` | every expected tool name was called (in order when `ordered`) |
+| Tool arguments | `tools[].args` | some call of that tool had those argument values (others may differ) |
+| Forbidden tools | `forbiddenTools` | never called, in any form |
+| Interactions | `interactions [{type, tool, turn}]`, `noOtherInteractions` (default true) | the expected pauses in order, no others, none unexpected |
+| World state | `writes [{call, args}]`, `noOtherWrites` (default true), `world {"orders.AS-1001.status": CANCELLED}` | τ-bench end state: successful writes in order (leading args), final field values |
+| Reply structure | `reply {status, block, displayedTool, mustContain, mustNotContain}`, `replies [{turn, …}]` | the structured output: envelope status, block (`none` = text only), displayed tool, text, ≤ 3 suggestions, a stored `AgentResponse`, no failed run |
+| Guards | `guards [names]`, `noAgentCall` | GUARD step names present (`[]` = no enforcing step); no agent model call for an input refusal |
+| Efficiency | `budget {maxAgentCalls, maxValidationRejections, maxTokens}` | first-try schema and tool-call adherence (validation rejections), calls, tokens |
+| Harness | — | no harness errors |
+
+`JsonCorrectnessMetric` is not used: the response format and `OutputValidationNode` already enforce the schema; what
+is worth measuring is how often a reply was sent back (Efficiency) and what it displays (Reply structure).
+
+`test_conversation` (LLM judge, threshold 0.7, a `ConversationalTestCase`: pauses as assistant turns, answers as
+user turns `[approves]` / `[chooses: …]`, tool calls with outputs on the assistant turns): `ConversationalGEval` with
+the scenario's `rubric` + its `outcome` + a grounding step, and `RoleAdherenceMetric` (customer or staff role text).
+
+Batch 1 (`orders/*`): tracking without a number, cancel approve / deny, cancel a shipped order (precheck, no card),
+ambiguous cancel → `ask_choice` → approval, address change (optional address question), delivered-not-arrived →
+hand-off approval, abandoned approval, dismissed question, another customer's order number (not found, nothing
+revealed). Next: batch 2 (products, returns, refusals, injection, faults), batch 3 (staff), then the real-DB tier, a
+simulated user, repeats with pass^k, scores pushed to Langfuse.

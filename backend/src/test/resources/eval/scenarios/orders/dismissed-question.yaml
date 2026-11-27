@@ -1,0 +1,36 @@
+description: The agent asks which order to cancel and the customer closes the question without answering.
+tags: [orders, hitl, choice, dismiss]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1001
+      status: PENDING
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", price: 89.90 }]
+      payment: { status: AUTHORIZED }
+    - number: AS-1002
+      status: PAID
+      placed: -1d
+      items: [{ title: "Noise-Cancelling Headphones", price: 199.00 }]
+turns:
+  - user: "Cancel my order."
+    answers:
+      - dismiss: true
+expect:
+  tools:
+    - { name: ask_choice }
+  forbiddenTools: [update_shipping_address, escalate_to_human]
+  interactions:
+    - { type: choice }
+  writes: []
+  world:
+    orders.AS-1001.status: PENDING
+    orders.AS-1002.status: PAID
+  reply:
+    status: ANSWERED
+    mustNotContain: ["has been cancelled", "is cancelled", "was cancelled"]
+  budget: { maxAgentCalls: 5, maxValidationRejections: 0 }
+  outcome: "Nothing is cancelled; the agent acknowledges that no order was chosen and offers to help when the customer is ready."
+  rubric:
+    - "Does not cancel anything and does not pick an order on the customer's behalf"
+    - "Acknowledges briefly that no order was selected and invites the customer to say which one when ready"

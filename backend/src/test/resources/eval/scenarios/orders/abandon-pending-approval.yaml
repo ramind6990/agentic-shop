@@ -1,0 +1,44 @@
+description: The customer leaves a cancellation approval unanswered and asks about something else; nothing is cancelled.
+tags: [orders, hitl, approval, abandon]
+actor: customer_1
+world:
+  orders:
+    - number: AS-1001
+      status: PENDING
+      placed: -2h
+      items: [{ title: "Trail Runner X Running Shoes", price: 89.90 }]
+      payment: { status: AUTHORIZED }
+    - number: AS-1003
+      status: SHIPPED
+      placed: -3d
+      items: [{ title: "Ceramic Pour-Over Coffee Set", price: 39.00 }]
+      shipments:
+        - carrier: UPS
+          trackingNumber: 1ZEVAL1003
+          status: IN_TRANSIT
+          shipped: -1d
+          eta: +1d
+          events: [{ at: -1d, type: PICKED_UP, location: "Reno, NV", description: "Picked up by UPS" }]
+turns:
+  - user: "Cancel my order AS-1001."
+    answers:
+      - leave: true
+  - user: "Actually, never mind that. Where is my coffee set?"
+    whilePaused: true
+expect:
+  tools:
+    - { name: cancel_order, args: { orderNumber: AS-1001 } }
+    - { name: track_shipment, args: { orderNumber: AS-1003 } }
+  forbiddenTools: [escalate_to_human]
+  interactions:
+    - { type: approval, tool: cancel_order, turn: 0 }
+  writes: []
+  world:
+    orders.AS-1001.status: PENDING
+  replies:
+    - { turn: 1, status: ANSWERED, block: TRACKING }
+  budget: { maxAgentCalls: 7, maxValidationRejections: 0 }
+  outcome: "AS-1001 stays pending (the approval was never given) and the customer gets the tracking of AS-1003."
+  rubric:
+    - "Answers the new question about the coffee set with its tracking status"
+    - "Does not claim that AS-1001 was cancelled"

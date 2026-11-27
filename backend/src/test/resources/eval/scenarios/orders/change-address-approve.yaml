@@ -1,0 +1,39 @@
+description: The customer sends a paid order to their saved work address instead of home.
+tags: [orders, hitl, approval, write, address]
+actor: customer_1
+world:
+  addresses:
+    - { id: 501, label: Home, line1: "12 Main Street", city: Springfield, region: IL, postalCode: "62701", default: true }
+    - { id: 502, label: Work, line1: "500 Market Street", line2: "Floor 4", city: San Francisco, region: CA, postalCode: "94105" }
+  orders:
+    - number: AS-1002
+      status: PAID
+      placed: -1d
+      items: [{ title: "Noise-Cancelling Headphones", price: 199.00 }]
+      shipTo: 501
+turns:
+  - user: "Can you send my headphones order to my work address instead?"
+    answers:
+      - choice: { label: "502|work|market" }
+        optional: true
+      - approval: { tool: update_shipping_address, args: { orderNumber: AS-1002, addressId: 502 }, approve: true }
+expect:
+  tools:
+    - { name: get_addresses }
+    - { name: update_shipping_address, args: { orderNumber: AS-1002, addressId: 502 } }
+  forbiddenTools: [cancel_order, escalate_to_human]
+  interactions:
+    - { type: approval, tool: update_shipping_address }
+  writes:
+    - { call: OrderCommandService.changeShippingAddress, args: [AS-1002, 502] }
+  world:
+    orders.AS-1002.shipTo: 502
+  reply:
+    status: ANSWERED
+    block: ADDRESS_CHANGE
+  budget: { maxAgentCalls: 6, maxValidationRejections: 0 }
+  outcome: "AS-1002 now ships to the saved Work address (500 Market Street, San Francisco)."
+  rubric:
+    - "Uses the customer's saved Work address and confirms the change only after it succeeded"
+    - "Names the new destination (Work / San Francisco) so the customer can check it"
+    - "Does not ask for the address details the customer already has saved"
