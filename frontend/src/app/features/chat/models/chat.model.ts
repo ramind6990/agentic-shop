@@ -25,12 +25,7 @@ export interface ActiveRun {
 }
 
 export type InteractionStatus =
-  | 'PENDING'
-  | 'ANSWERED'
-  | 'DISMISSED'
-  | 'APPROVED'
-  | 'DENIED'
-  | 'NOT_ANSWERED';
+  'PENDING' | 'ANSWERED' | 'DISMISSED' | 'APPROVED' | 'DENIED' | 'NOT_ANSWERED';
 
 export interface TimelineMessage {
   id: number;
@@ -54,7 +49,13 @@ export interface ChoiceOption {
 }
 
 export type PendingInteraction =
-  | { type: 'choice'; interactionId: string; question: string; options: ChoiceOption[]; multiSelect: boolean }
+  | {
+      type: 'choice';
+      interactionId: string;
+      question: string;
+      options: ChoiceOption[];
+      multiSelect: boolean;
+    }
   | { type: 'input'; interactionId: string; question: string }
   | { type: 'yesNo'; interactionId: string; question: string }
   | { type: 'approval'; interactionId: string; title: string; detail: string | null };
@@ -90,14 +91,15 @@ export function describeAnswer(interaction: PendingInteraction, answer: HumanAns
 
 // ---------------------------------------------------------------- the reply
 
-export type BlockType = 'NONE' | 'PRODUCT_LIST' | 'ORDER_LIST';
+/** ANSWERED / REFUSED come from the agent; FAILED and STOPPED are stored by the system for a run without a reply. */
+export type ReplyStatus = 'ANSWERED' | 'REFUSED' | 'FAILED' | 'STOPPED';
 
 export interface ReplyEnvelope {
-  status: 'ANSWERED' | 'REFUSED';
+  status: ReplyStatus;
+  /** Markdown. */
   text: string;
-  blockType: BlockType;
-  productList?: ProductItem[];
-  orderList?: OrderItem[];
+  /** What is shown next to the text; absent for a text-only reply. */
+  block?: ReplyBlock;
   suggestedReplies: SuggestionReply[];
 }
 
@@ -106,10 +108,50 @@ export interface SuggestionReply {
   text: string;
 }
 
+/** The data a reply shows; `type` says which. */
+export type ReplyBlock =
+  | { type: 'PRODUCT_LIST'; items: ProductItem[] }
+  | { type: 'PRODUCT_DETAIL'; product: ProductDetail }
+  | { type: 'REVIEW_LIST'; productId: number; items: Review[] }
+  | { type: 'ORDER_LIST'; items: OrderItem[] }
+  | { type: 'ORDER_DETAIL'; order: OrderDetail }
+  | { type: 'ORDER_CANCELLATION'; cancellation: OrderCancellation }
+  | { type: 'ADDRESS_CHANGE'; change: { orderNumber: string; shippingAddress: ChatAddress } }
+  | { type: 'TRACKING'; tracking: Tracking }
+  | { type: 'SHIPMENT_LIST'; items: ShipmentRow[] }
+  | { type: 'RETURN_LIST'; items: ReturnItem[] }
+  | { type: 'REFUND_LIST'; items: RefundItem[] }
+  | { type: 'TICKET_LIST'; items: TicketItem[] }
+  | { type: 'TICKET_DETAIL'; ticket: TicketDetail }
+  | { type: 'CUSTOMER_LIST'; items: CustomerRow[] }
+  | { type: 'CUSTOMER_DETAIL'; customer: CustomerDetail }
+  | { type: 'ADDRESS_LIST'; items: ChatAddress[] };
+
+export type BlockType = ReplyBlock['type'];
+
+/** A block of one type. */
+export type BlockOf<T extends BlockType> = Extract<ReplyBlock, { type: T }>;
+
+/** A saved address (with id and label) or an order's delivery address. Absent fields are omitted. */
+export interface ChatAddress {
+  id?: number;
+  label?: string;
+  recipient: string;
+  line1: string;
+  line2: string | null;
+  city: string;
+  region: string | null;
+  postalCode: string;
+  country: string;
+  defaultAddress?: boolean;
+}
+
 export interface ProductItem {
   id: number;
+  sku?: string;
   title: string;
   brand: string;
+  category?: string;
   price: number;
   listPrice: number | null;
   currency: string;
@@ -119,7 +161,32 @@ export interface ProductItem {
   thumbnailUrl: string;
 }
 
+export interface ProductDetail {
+  card: ProductItem;
+  description: string | null;
+  seller: string;
+  categoryPath: string[];
+  attributes: { name: string; value: string }[];
+  delisted: boolean;
+  availableUnits: number;
+  restockEta: string | null;
+  /** Stars → number of reviews. */
+  ratingDistribution: Record<string, number>;
+}
+
+export interface Review {
+  id: number;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  authorName: string;
+  verifiedPurchase: boolean;
+  helpfulCount: number;
+  createdAt: string;
+}
+
 export interface OrderLine {
+  itemId?: number;
   productId: number;
   title: string;
   quantity: number;
@@ -133,10 +200,201 @@ export interface OrderItem {
   status: string;
   total: number;
   currency: string;
+  seller?: string;
   lines: OrderLine[];
   shippingCity: string;
   trackingNumber: string | null;
   estimatedDelivery: string | null;
+}
+
+/** Whether an action is allowed now and, when not, why. */
+export interface Verdict {
+  allowed: boolean;
+  reason?: string;
+}
+
+export interface OrderDetail {
+  card: OrderItem;
+  customerId: number;
+  customer: string;
+  shippingAddress: ChatAddress;
+  subtotal: number;
+  shippingFee: number;
+  tax: number;
+  payments: { method: string; status: string; amount: number }[];
+  shipments: ShipmentInfo[];
+  returns: {
+    id: number;
+    itemId: number;
+    quantity: number;
+    reason: string;
+    status: string;
+    openedAt: string;
+  }[];
+  refunds: {
+    id: number;
+    amount: number;
+    status: string;
+    reason: string | null;
+    createdAt: string;
+  }[];
+  actions: {
+    cancel: Verdict;
+    changeAddress: Verdict;
+    returnItems: Verdict;
+    returnDeadline: string | null;
+    returnableQuantities: Record<string, number>;
+  };
+}
+
+export interface ShipmentInfo {
+  carrier: string;
+  trackingNumber: string;
+  status: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+  estimatedDelivery: string | null;
+}
+
+export interface OrderCancellation {
+  orderNumber: string;
+  status: string;
+  cancelledAt: string;
+  refundAmount: number;
+  currency: string;
+  refundMethod: string | null;
+  refundExpectedBy: string | null;
+}
+
+export interface Tracking {
+  orderNumber: string;
+  orderStatus: string;
+  shipments: (ShipmentInfo & { eventCount: number; events: TrackingEvent[] })[];
+}
+
+export interface TrackingEvent {
+  occurredAt: string;
+  type: string;
+  location: string | null;
+  description: string | null;
+}
+
+export interface ShipmentRow extends ShipmentInfo {
+  orderNumber: string;
+  customerId: number;
+  customer: string;
+  seller: string;
+}
+
+export interface ReturnItem {
+  id: number;
+  orderNumber: string;
+  itemId: number;
+  product: string;
+  quantity: number;
+  reason: string;
+  status: string;
+  openedAt: string;
+  resolvedAt: string | null;
+  customerNote: string | null;
+  resolutionNote: string | null;
+}
+
+/** Amounts are in the order's currency. */
+export interface RefundItem {
+  id: number;
+  orderNumber: string;
+  amount: number;
+  status: string;
+  reason: string | null;
+  returnId: number | null;
+  createdAt: string;
+}
+
+export interface TicketItem {
+  ticketNumber: string;
+  subject: string;
+  category: string;
+  status: string;
+  priority: string;
+  tier: string;
+  orderNumber?: string;
+  customerId?: number;
+  customer?: string;
+  assignee?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TicketDetail {
+  ticket: TicketItem;
+  messageCount: number;
+  messages: {
+    author: string;
+    authorName: string;
+    body: string;
+    internal: boolean;
+    createdAt: string;
+  }[];
+}
+
+export interface CustomerRow {
+  id: number;
+  fullName: string;
+  email: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface CustomerDetail extends CustomerRow {
+  phone: string | null;
+  addresses: ChatAddress[];
+  orderCount: number;
+  returnCount: number;
+  ticketCount: number;
+}
+
+// ---------------------------------------------------------------- token usage
+
+export interface TokenTotals {
+  calls: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
+export type UsageIssuer = 'USER' | 'SYSTEM';
+
+export interface UserUsage {
+  userId: number;
+  from: string;
+  to: string;
+  total: TokenTotals;
+  byIssuer: Record<UsageIssuer, TokenTotals>;
+}
+
+export interface MemoryState {
+  summarized: boolean;
+  summaryChars: number;
+  maxSummaryChars: number;
+  hardLimitChars: number;
+  messagesSinceSummary: number;
+  summarizeAfter: number;
+  keepRecent: number;
+}
+
+export interface ConversationUsage {
+  conversationId: number;
+  total: TokenTotals;
+  byIssuer: Record<UsageIssuer, TokenTotals>;
+  context: {
+    /** Input tokens of the conversation's latest agent call; null before the first one. */
+    lastCallInputTokens: number | null;
+    lastCallAt: string | null;
+    memory: MemoryState;
+  };
 }
 
 // ---------------------------------------------------------------- WebSocket frames
@@ -173,7 +431,7 @@ export interface ChatResponse {
   seq?: number;
   input?: { text?: string; answered?: PendingInteraction; answer?: HumanAnswer };
   progress?: {
-    stage: 'TOOL_STARTED' | 'TOOL_FINISHED';
+    stage: 'TOOL_STARTED' | 'TOOL_FINISHED' | 'RETRYING' | 'THINKING';
     label?: string;
     toolName?: string;
     success?: boolean;

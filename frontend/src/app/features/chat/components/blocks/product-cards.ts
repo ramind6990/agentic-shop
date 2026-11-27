@@ -16,7 +16,13 @@ import { ProductItem } from '../../models/chat.model';
         <li class="col">
           <article class="card h-100">
             <div class="thumb rounded-top position-relative">
-              <img [ngSrc]="p.thumbnailUrl" width="240" height="160" alt="" (error)="hide($event)" />
+              <img
+                [ngSrc]="p.thumbnailUrl"
+                width="240"
+                height="160"
+                alt=""
+                (error)="hide($event)"
+              />
               @if (!p.inStock) {
                 <span class="badge text-bg-secondary position-absolute top-0 start-0 m-2">
                   Out of stock

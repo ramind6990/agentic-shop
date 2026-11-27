@@ -58,12 +58,13 @@ answered). A conversation has at most one active run at a time.
 | `ai2.contract.domain` | ai2's own enums and values (`OrderStatus`, `ReturnReason`, `TicketStatus`, `Address`, `Verdict` …); never `app` classes |
 | `ai2.contract.tool` | `ToolResponse`, `ToolResult`, `PageInfo`, `Texts` |
 | `ai2.contract.tool.response.*` | responses per family: `product`, `order`, `shipment`, `returns`, `customer`, `support` |
-| `ai2.contract.reply` | `ReplyEnvelope`, `BlockType`, `ReplyEnvelopes` (agent response → envelope; `displayable`) |
-| `ai2.tools` | `ToolRegistry` (one `ToolCatalog` per `Audience`), `ToolDefinitions`, `ToolCallExecutor` (runs as the user), `ToolProgress`, `ToolPaging`, `ToolDates`, annotations (`@ToolAudience`, `@ToolLabel`, `@Sensitive`, `@AskUser`) |
+| `ai2.contract.reply` | `ReplyEnvelope`, `ReplyStatus`, `ReplyEnvelopes` (agent response → envelope; failed / stopped) |
+| `ai2.contract.reply.block` | `ReplyBlock` (sealed, JSON `type`) + one record per block, `ReplyBlocks` (tool result → block; `displayable`) |
+| `ai2.tools` | `ToolRegistry` (one `ToolCatalog` per `Audience`), `ToolDefinitions`, `ToolCallExecutor` (runs as the user), `ToolCallTracker` (progress events + TOOL trace step), `ToolPaging`, `ToolDates`, annotations (`@ToolAudience`, `@ToolLabel`, `@Sensitive`, `@AskUser`) |
 | `ai2.tools.ask` | `AskUserTools` (`ask_choice`, `ask_input`, `ask_yes_no`) + their argument records |
 | `ai2.tools.{product,order,customer,shipment,returns,support}` | `*Tools` (thin `@Tool` methods) + MapStruct `*ToolMapper` (domain DTO → contract) |
-| `ai2.model` | `Ai2ModelConfig` (the `ai2ChatModel` bean), `SystemPrompt`, `Ai2ModelProperties`, `Ai2PromptProperties`, `Ai2ReplyProperties` |
-| `ai2.conversation` | `ConversationService`, `RunLauncher`, `GraphRunner`, `RunOutcome`, `ConversationConflictException` |
+| `ai2.model` | `Ai2ModelConfig` (the `ai2ChatModel` bean), `ModelGateway` (the only model caller: retries, trace, usage), `ModelCall`, `ModelRetryPolicy`, `ModelCallException`, `SystemPrompt`, `Ai2ModelProperties`, `Ai2PromptProperties`, `Ai2ReplyProperties`, `Ai2RunProperties` |
+| `ai2.conversation` | `ConversationService`, `RunLauncher` (threads, cancel), `RunRecorder` (start / end of a run: message, active run, trace), `GraphRunner`, `RunOutcome`, `ConversationConflictException` |
 | `ai2.events` | `ChatResponse` (the one outgoing message), `AgentEventPublisher`, `RunEvents` / `RunEventBus`, `InMemoryRunEventBus`, `Ai2EventProperties` |
 | `ai2.events.sse` | `SseRunEventTransport` |
 | `ai2.events.ws` | `WsConfig`, `Ai2WsProperties`, `WsConnectTokenStore`, `WsHandshakeInterceptor`, `WsUser`, `ChatSocketHandler`, `ClientSession`, `ClientMessage` |
@@ -71,8 +72,10 @@ answered). A conversation has at most one active run at a time.
 | `ai2.conversation.message` | `ConversationMessage`, `ConversationMessageStore`, `MessageKind`, `InteractionStatus`, `ReplyDisplay` |
 | `ai2.activerun` | `ActiveRun`, `ActiveRunRegistry` |
 | `ai2.checkpointer` | `JdbcCheckpointSaver` |
-| `ai2.memory` | `HistoryProvider`, `ConversationSummarizer`, `HistoryProjection`, `ConversationMemoryStore`, `Ai2MemoryProperties` |
-| `ai2.web` | `ConversationController`, `RunEventsController`, `WsConnectTokenController`, `DevToolsController` (dev only), `SendMessageRequest`, `AnswerRequest` |
+| `ai2.memory` | `HistoryProvider` (also `memoryState`), `MemoryState`, `ConversationSummarizer`, `HistoryProjection`, `ConversationMemoryStore`, `Ai2MemoryProperties` |
+| `ai2.trace` | `TraceRecorder` (writes `ai2_run` / `ai2_run_step`), `TraceStep`, `StepType`, `RunStatus`, `ErrorCodes`, `TraceQueries`, `TraceViews` |
+| `ai2.usage` | `UsageRecorder` (writes `ai2_usage`), `UsageScope`, `UsageIssuer`, `UsagePurpose`, `TokenCounts`, `TokenTotals`, `UsageQueries`, `UsageService`, `UsageViews` |
+| `ai2.web` | `ConversationController`, `UsageController` (usage + traces), `RunEventsController`, `WsConnectTokenController`, `DevToolsController` (dev only), `SendMessageRequest`, `AnswerRequest` |
 
 ---
 
@@ -93,7 +96,7 @@ START → modelCall → outputValidation ─┬─ RETRY ───────�
 
 | Node | What it does |
 |---|---|
-| `ModelCallNode` | Builds the request: system prompt (rendered per call) + history + this run's messages + all tools + the `AgentResponse` JSON schema as response format. On the run's last allowed call, `toolChoice = NONE` and a "no more tools" note. |
+| `ModelCallNode` | Builds the request: system prompt (rendered per call) + history + this run's messages + all tools + the `AgentResponse` JSON schema as response format, and sends it through `ModelGateway`. On the run's last allowed call, or once the run's tokens reach `app.ai2.run.max-tokens`, `toolChoice = NONE` and a "no more tools" note. |
 | `OutputValidationNode` | Validates the model's output and decides how the step ends (see below). |
 | `ToolExecutionNode` | Executes read-only tool calls; stores each successful result under a new ref. |
 | `AskUserNode` | Pauses once per unanswered ask call; when all are answered, writes the answers as the calls' results. |
@@ -103,7 +106,12 @@ START → modelCall → outputValidation ─┬─ RETRY ───────�
 
 For **tool calls**:
 - unknown tool name (including a tool of another audience) → error result per call, retry;
-- the run's budget is used up → FAILED;
+- tool calls although the call was made with tools off (budget used up) → error results, retry while model calls are
+  left (a used-up token budget never fails the run by itself);
+- more than 5 calls in one step → the rest get "Skipped: more than 5 tool calls in one step…";
+- a call with the same tool and arguments (JSON, key order ignored) as an earlier call of the run — counting only
+  calls after the run's last sensitive call, since an action may change what a read returns — gets "Not executed:
+  already called with the same arguments in this request; use its result (ref rN)";
 - calls are sorted into a `StepPlan` (read / ask / sensitive / deferred) by tool category;
 - **mixing rule**: when a step contains an ask, its sensitive calls are deferred with the result "Not executed: call it
   again after the user has answered your question".
@@ -111,13 +119,13 @@ For **tool calls**:
 For a **final answer** (text without tool calls): parse JSON into `AgentResponse`, then check status present, text
 non-blank and ≤ `max-text-length`, ≤ `max-suggestions` suggestions with labels ≤ `max-suggestion-label-length`, and
 that `finalReferenceToDisplay.ref` is a ref of this run whose `selectedItemIdentifiers` are items of that result, and
-that the result can be shown at all (`ReplyEnvelopes.displayable`: products and orders only).
+that the result can be shown at all (`ReplyBlocks.displayable`: everything except category filters).
 
 Failure → feedback to the model (an error result per tool call, or a system message for a final answer) and RETRY;
 after 2 consecutive failures, or when the model-call budget is used up, FAILED with a fallback reply.
 
-Stubs still marked TODO: argument parsing against tool schemas, per-step call cap, duplicate-call detection,
-silent fixes.
+Every rejection and every dropped call is a VALIDATION step in the run's trace. Stubs still marked TODO: argument
+parsing against tool schemas, silent fixes.
 
 ### State (`RunState`)
 
@@ -128,6 +136,7 @@ Checkpointed after every node, so every value is `Serializable`.
 | `context` | `RunContext(userId, conversationId, runId)` | caller |
 | `messages` | this run's messages (append-only, duplicates kept) | several nodes |
 | `modelCallCount` | model calls so far | modelCall |
+| `tokensUsed`, `lastCallToolsOn` | input + output tokens of the run's model calls (token budget); whether the last call could use tools | modelCall |
 | `validationOutcome`, `validationRetries`, `stepPlan` | how the last step ended | outputValidation (every pass) |
 | `response` | the final `AgentResponse` | outputValidation |
 | `humanAnswers` | callId → `HumanAnswer` (merge reducer) | caller via `updateState` before resuming |
@@ -137,8 +146,9 @@ History of earlier runs is **not** in the state; it is loaded per model call (se
 
 ### Limits (`RunLimits`)
 
-8 model calls per run (the last with tools off), 2 validation retries, 5 calls per step (cap still TODO); recursion
-limit derived from these.
+8 model calls per run (the last with tools off), 2 validation retries, 5 calls per step; recursion limit derived
+from these. Token budget per run: `app.ai2.run.max-tokens` (default 200 000, input + output of the run's own calls);
+once reached, the next call is made with tools off.
 
 ---
 
@@ -166,19 +176,24 @@ response and the tool result its `finalReferenceToDisplay.ref` names:
 ```json
 {
   "status": "ANSWERED",
-  "text": "Here are the running shoes I found.",
-  "blockType": "PRODUCT_LIST",
-  "productList": [ { "id": 101, "title": "…", "price": 89.90, "thumbnailUrl": "…" } ],
+  "text": "Here are the **running shoes** I found.",
+  "block": { "type": "PRODUCT_LIST", "items": [ { "id": 101, "title": "…", "price": 89.90, "thumbnailUrl": "…" } ] },
   "suggestedReplies": [ { "label": "…", "text": "…" } ]
 }
 ```
 
-- `blockType`: `NONE | PRODUCT_LIST | ORDER_LIST`; only the matching list (`productList` / `orderList`, full item data)
-  is present. Product and order lists, and a single product or order (`get_product` / `get_order`, as a one-card
-  list), become blocks. Any other result cannot be shown: the model reads "not shown to the user" on its ref line and
-  writes the facts in the text.
-- Items are narrowed to `selectedItemIdentifiers` (empty = all), with the ids of `ToolResponse.itemIdentifiers()`.
-- The timeline still stores the raw response and `ReplyDisplay` (unchanged).
+- `status`: `ANSWERED | REFUSED` (from the agent), `FAILED | STOPPED` (stored by the system for a run that ended
+  without a reply: an error, the user's stop, a restart). `text` is markdown (the UI renders lists, bold, italic,
+  code, links — without innerHTML).
+- `block` (absent for a text-only reply) is a `ReplyBlock` whose `type` names the card: `PRODUCT_LIST`,
+  `PRODUCT_DETAIL`, `REVIEW_LIST`, `ORDER_LIST`, `ORDER_DETAIL`, `ORDER_CANCELLATION`, `ADDRESS_CHANGE`, `TRACKING`,
+  `SHIPMENT_LIST`, `RETURN_LIST`, `REFUND_LIST`, `TICKET_LIST`, `TICKET_DETAIL`, `CUSTOMER_LIST`, `CUSTOMER_DETAIL`,
+  `ADDRESS_LIST`. A single changed return, refund or ticket (after an action) shows as a one-item list. Only category
+  filters have no block: the model reads "not shown to the user" on their ref line.
+- List items are narrowed to `selectedItemIdentifiers` (empty = all), with the ids of `ToolResponse.itemIdentifiers()`
+  (tracking: tracking numbers).
+- The timeline still stores the raw response and `ReplyDisplay` (unchanged). Envelopes stored before V18 were
+  migrated to the `block` shape.
 
 ---
 
@@ -344,9 +359,13 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
   for resume, `delete … returning` for abandon), so concurrent requests cannot both win.
 - Checkpoints are deleted with their active run (FK cascade); everything is deleted with its conversation.
 - A failed checkpoint write fails the run (pausing and resuming depend on it).
-- At startup, runs still RUNNING are dropped (cut off by the previous shutdown); PAUSED runs stay and can still be
-  answered — a paused approval survives a restart.
-- Migrations: `V12__ai2_active_run_checkpoint.sql`, `V13__ai2_conversation_memory.sql`, `V14__ai2_message_reply.sql`.
+- At startup, runs still RUNNING are dropped (cut off by the previous shutdown) and get a FAILED reply ("this reply
+  was interrupted"); PAUSED runs stay and can still be answered — a paused approval survives a restart.
+- `ai2_run` (one row per run, kept after the active run row is gone: status, prompt version, model, step count, error),
+  `ai2_run_step` (the run's trace, see section 10) and `ai2_usage` (the token ledger) are written by `TraceRecorder`
+  and `UsageRecorder`, each write committing on its own and never failing the run.
+- Migrations: `V12__ai2_active_run_checkpoint.sql`, `V13__ai2_conversation_memory.sql`, `V14__ai2_message_reply.sql`,
+  `V18__ai2_trace_usage.sql`.
 
 ---
 
@@ -373,7 +392,7 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
   `gpt-6-luna` rejects function tools with reasoning on chat completions. `store=false`. It is a non-default bean
   (`defaultCandidate = false`), injected by name only, so old code asking for "a ChatModel" never gets it. Without an
   API key the app still starts and ai2 calls fail with a clear message.
-- System prompt, chosen by `app.ai2.prompt.version` (default `v2`): `prompts/ai2/v2/base.md` (marketplace intro,
+- System prompt, chosen by `app.ai2.prompt.version` (default `v3`; v3 = v2 with every result displayable except category filters): `prompts/ai2/v3/base.md` (marketplace intro,
   status glossary, all working rules, paging rule, tool guide) with the audience's `customer.md` or `staff.md` inserted
   at `{{audience}}`; older versions are one file `prompts/ai2/system-<version>.md`. Placeholders (`{{maxTextLength}}`,
   `{{pageSize}}` …) are filled at startup from `app.ai2.reply.*` and the paging limits. Each call adds today's date,
@@ -385,6 +404,31 @@ Interaction status: PENDING → ANSWERED / DISMISSED (questions), APPROVED / DEN
   (including the rest of a multi-part request), and never mentioning tools/refs/JSON in the text.
 
 ---
+
+### Retries, trace and token usage
+
+Trace and usage are written in four places only:
+
+| Where | What |
+|---|---|
+| `ModelGateway` | every model attempt → MODEL step (attempt n, request / response summary, latency, tokens or error code); every successful one → an `ai2_usage` row billed to its `UsageScope` |
+| `ToolCallTracker` | every executed tool → TOOL step (arguments, the result text the model got, latency, `TOOL_ERROR`) |
+| `OutputValidationNode` | rejected outputs and dropped calls → VALIDATION step |
+| `RunRecorder` | run start / resume (INPUT step), pause (INTERACTION), reply (REPLY), failure (ERROR + run FAILED with code and message), stop (CANCELLED), abandon (ABANDONED), interrupted by a restart |
+
+- **Retries** (`ModelRetryPolicy`, `app.ai2.model.retry`): rate limits, timeouts, 5xx/408/409/425 and network errors
+  are retried up to `max-retries` (default 5) with exponential backoff (1 s doubling, max 20 s, ±20% jitter). Before
+  each retry the run's stream gets `PROGRESS {stage: RETRYING, label: "Request failed. Retrying (2/5)"}`, after a
+  successful retry `{stage: THINKING, label: "Thinking…"}`. Bad requests, authentication, a missing model, content
+  filters and an interrupted (stopped) run are never retried. The wait is interruptible. A call that fails for good
+  throws `ModelCallException` (code `MODEL_<cause>`, e.g. `MODEL_HTTP_429`); the run then fails with a stored FAILED
+  reply ("the assistant is not reachable right now").
+- **Issuer**: `USER` for the agent's own calls (`ModelCall.chat`, validation retries included), `SYSTEM` for work the
+  system does itself (`ModelCall.summary`: the memory summarizer, not retried). Usage is tokens only: input (of which
+  cached), output (of which reasoning).
+- **Run failures** (anything thrown out of the graph) are not retried: `RunRecorder.failed` releases the run, stores
+  the FAILED reply and traces the error; the history gives the next run "(I could not answer this message: an error
+  occurred.)" (STOPPED: "(The customer stopped this request before I replied.)").
 
 ## 11. API
 
@@ -399,6 +443,19 @@ All endpoints need the `AI_CHAT` permission (customers and support staff).
 | POST | `/api/ai2/conversations/{id}/answers` | `{"interactionId": "…", "answer": {"type": "choice", "values": ["WE45"]}}` | `RunOutcome` |
 | GET | `/api/ai2/conversations/{id}/messages` | — | the timeline |
 
+Usage and traces:
+
+| Method | Path | Permission | Returns |
+|---|---|---|---|
+| GET | `/api/ai2/usage/me?from&to` | `AI_USAGE_READ_OWN` | `{userId, from, to, total, byIssuer: {USER, SYSTEM}}` (tokens; default the current UTC month) |
+| GET | `/api/ai2/usage/users/{userId}?from&to` | `AI_USAGE_READ_ALL` | the same for any user |
+| GET | `/api/ai2/conversations/{id}/usage` | `AI_CHAT` (owner, else 404) | `{conversationId, total, byIssuer, context: {lastCallInputTokens, lastCallAt, memory}}`; `memory` = `HistoryProvider.memoryState` (summary size, messages since the summary, the limits) |
+| GET | `/api/ai2/conversations/{id}/runs` | `AI_TRACE_READ` | the conversation's runs, newest first |
+| GET | `/api/ai2/runs/{runId}/trace` | `AI_TRACE_READ` | `{run, steps}` |
+
+`TokenTotals` = `{calls, inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens}` (total = input +
+output).
+
 The POST endpoints return at once with a `RunOutcome`: `running` (the run executes in the background) or `abandoned`
 (`unanswered`); always `conversationId` and `runId`. How a running run ends comes as run events.
 
@@ -410,7 +467,7 @@ exactly the matching payload is set:
 ```json
 {"type":"INPUT","requestId":"r1","conversationId":9,"runId":"…","seq":1,"at":"…","input":{"text":"show me running shoes"}}
 {"type":"PROGRESS","conversationId":9,"runId":"…","seq":2,"at":"…","progress":{"stage":"TOOL_STARTED","label":"Searching products for running shoes","toolName":"search_products"}}
-{"type":"REPLY","conversationId":9,"runId":"…","seq":4,"at":"…","reply":{"status":"ANSWERED","text":"…","blockType":"PRODUCT_LIST","productList":[…],"suggestedReplies":[]}}
+{"type":"REPLY","conversationId":9,"runId":"…","seq":4,"at":"…","reply":{"status":"ANSWERED","text":"…","block":{"type":"PRODUCT_LIST","items":[…]},"suggestedReplies":[]}}
 {"type":"INTERACTION","conversationId":9,"runId":"…","seq":4,"at":"…","interaction":{"type":"approval","interactionId":"…","title":"Do you want to cancel order WE45?"}}
 {"type":"ERROR","requestId":"r3","at":"…","error":{"code":"CONFLICT","message":"…","retryable":true}}
 ```
@@ -498,8 +555,13 @@ does a socket the bus drops for falling too far behind. Closing a socket only st
 `frontend/src/app/features/chat` (route `/chat`, `/chat/:conversationId`, needs `AI_CHAT`; the "Support chat" button at
 the bottom of the side nav). `ChatSocket` (connect token → socket, reconnect with backoff) and `ChatStore` are provided
 by the page: the socket opens with the page and closes when it is left. The conversation list sits next to the app's
-side nav; the open conversation comes from the URL and its history from the detail endpoint. Progress is one
-transient line; a reply shows its text, its cards (products / orders) and, on the last reply, its suggestions;
+side nav; the open conversation comes from the URL and its history from the detail endpoint. A usage bar above the
+conversation shows this chat's tokens (you / system), its context (the last call's input tokens, the memory: messages
+kept word for word vs. the summarize threshold) and the user's tokens this month, reloaded when a run ends. Progress
+is one transient line (`ProgressLine`): a new label erases the old one from its end and types in from its start
+(shared beginning kept; instant under reduced motion); a reply shows its markdown text (`shared/ui/markdown-text`), its
+block (`components/blocks`, one card per block type) and, on the last reply, its suggestions; FAILED / STOPPED replies
+show as the error / "Stopped." notes;
 questions and approvals are boxes with their buttons and become "asked / answered" boxes once answered. The send button
 turns into stop while a run executes. Socket events of other conversations only refresh the list (busy dot).
 
@@ -518,8 +580,14 @@ app:
       max-output-tokens: 4000
       reasoning-effort: ${AI2_REASONING_EFFORT:}   # none | minimal | low | medium | high
       timeout: 60s
+      retry:        # transient model errors; the user sees "Request failed. Retrying (n/max)"
+        max-retries: ${AI2_MODEL_MAX_RETRIES:5}
+        initial-backoff: 1s
+        max-backoff: 20s
+    run:
+      max-tokens: ${AI2_RUN_MAX_TOKENS:200000}   # then the next model call answers without tools
     prompt:
-      version: ${AI2_PROMPT_VERSION:v2}   # prompts/ai2/v2/base.md + customer.md / staff.md
+      version: ${AI2_PROMPT_VERSION:v3}   # prompts/ai2/v3/base.md + customer.md / staff.md
     reply:          # told to the model and enforced by validation
       max-text-length: 600
       max-suggestions: 3
@@ -585,21 +653,16 @@ limits per tier; the hand-off scenario (section 5) from the customer's report to
 - Item actions in the reply envelope (view, track, cancel…); token streaming of the reply text; shipments in the
   envelope once a shipment tool exists.
 - Remove the REST send/answer endpoints now that the UI uses the WebSocket.
-- A stopped or failed run leaves the user's message unanswered in the history, so the next run's model may still
-  answer it; store a marker (or tell the model) for such runs.
 - WebSocket hardening: a cap on open sockets per user, and a rate limit on chat frames.
 - Hand-off follow-ups: a staff reply/resolution posted into the customer's linked conversation (domain event → ai2
   listener → "Support team" chat message, needs a frontend card); code-forced escalation (a "Talk to a person" button,
   repeated tool failures, step budget used up); priority rules and response times per category.
-- Display blocks for product/order detail, tracking, returns, refunds and tickets.
 - Pre-approval check for sensitive tools: today `cancel_order` on a delivered order asks for approval first and only
   then fails; check feasibility (and compute consequences for the approval detail) before pausing.
-- Validation stubs: tool-argument checks, per-step call cap, duplicate calls, silent fixes.
-- A visible error reply when a run fails (today the user's message stays unanswered in the timeline; only an ERROR
-  event is emitted).
+- Validation stubs: tool-argument checks, silent fixes.
 - Several app instances: run events and connect tokens live in one JVM (needs a shared bus behind `RunEventBus` and a
   shared connect-token store).
-- Retries on model errors; token/cost budget per run; usage recording for ai2 model calls.
+- Cost (prices per model) on top of the token ledger; `RunLimits` into configuration.
 - Several app instances: dropping RUNNING runs at startup assumes one instance (needs owner + heartbeat, or resuming
   from checkpoints).
 - The approval text of a sensitive tool can only show its arguments (e.g. an address id, not the address).

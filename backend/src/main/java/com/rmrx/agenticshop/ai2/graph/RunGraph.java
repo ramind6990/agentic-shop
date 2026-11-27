@@ -10,10 +10,12 @@ import com.rmrx.agenticshop.ai2.graph.node.ToolExecutionNode;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
 import com.rmrx.agenticshop.ai2.memory.HistoryProvider;
 import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
+import com.rmrx.agenticshop.ai2.model.Ai2RunProperties;
+import com.rmrx.agenticshop.ai2.model.ModelGateway;
 import com.rmrx.agenticshop.ai2.model.SystemPrompt;
 import com.rmrx.agenticshop.ai2.tools.ToolCallExecutor;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
-import dev.langchain4j.model.chat.ChatModel;
+import com.rmrx.agenticshop.ai2.trace.TraceRecorder;
 import org.bsc.langgraph4j.CompileConfig;
 import org.bsc.langgraph4j.CompiledGraph;
 import org.bsc.langgraph4j.GraphStateException;
@@ -47,26 +49,29 @@ public class RunGraph {
 
     private final CompiledGraph<RunState> graph;
 
-    public RunGraph(JdbcCheckpointSaver checkpoints, ToolRegistry registry, ToolCallExecutor executor,
-                    ChatModel model, SystemPrompt systemPrompt, Ai2ReplyProperties reply,
-                    HistoryProvider historyProvider) throws GraphStateException {
-        this.graph = build(checkpoints, registry, executor, model, systemPrompt, reply, historyProvider);
+    /** What the nodes need; the graph builds its nodes itself. */
+    public record Dependencies(JdbcCheckpointSaver checkpoints, ToolRegistry registry, ToolCallExecutor executor,
+                               ModelGateway model, SystemPrompt systemPrompt, Ai2ReplyProperties reply,
+                               Ai2RunProperties run, HistoryProvider historyProvider, TraceRecorder trace) {
+    }
+
+    public RunGraph(Dependencies deps) throws GraphStateException {
+        this.graph = build(deps);
     }
 
     public CompiledGraph<RunState> graph() {
         return graph;
     }
 
-    private static CompiledGraph<RunState> build(JdbcCheckpointSaver checkpoints, ToolRegistry registry,
-                                                 ToolCallExecutor executor, ChatModel model,
-                                                 SystemPrompt systemPrompt, Ai2ReplyProperties reply,
-                                                 HistoryProvider historyProvider) throws GraphStateException {
-        StateGraph<RunState> g = new StateGraph<>(RunState.SCHEMA, checkpoints.serializer())
-                .addNode(MODEL_CALL, node_async(new ModelCallNode(registry, model, systemPrompt, historyProvider)))
-                .addNode(OUTPUT_VALIDATION, node_async(new OutputValidationNode(registry, reply)))
-                .addNode(TOOL_EXECUTION, node_async(new ToolExecutionNode(executor)))
+    private static CompiledGraph<RunState> build(Dependencies d) throws GraphStateException {
+        StateGraph<RunState> g = new StateGraph<>(RunState.SCHEMA, d.checkpoints().serializer())
+                .addNode(MODEL_CALL, node_async(new ModelCallNode(d.registry(), d.model(), d.systemPrompt(),
+                        d.historyProvider(), d.run())))
+                .addNode(OUTPUT_VALIDATION, node_async(new OutputValidationNode(d.registry(), d.reply(), d.trace())))
+                .addNode(TOOL_EXECUTION, node_async(new ToolExecutionNode(d.executor())))
                 .addNode(ASK_USER, node_async(new AskUserNode()))
-                .addNode(SENSITIVE_TOOL_EXECUTION, node_async(new SensitiveToolExecutionNode(registry, executor)))
+                .addNode(SENSITIVE_TOOL_EXECUTION, node_async(new SensitiveToolExecutionNode(d.registry(),
+                        d.executor())))
 
                 .addEdge(START, MODEL_CALL)
                 .addEdge(MODEL_CALL, OUTPUT_VALIDATION)
@@ -84,7 +89,7 @@ public class RunGraph {
                 .addEdge(SENSITIVE_TOOL_EXECUTION, MODEL_CALL);
 
         return g.compile(CompileConfig.builder()
-                .checkpointSaver(checkpoints)
+                .checkpointSaver(d.checkpoints())
                 .recursionLimit(RunLimits.recursionLimit())
                 .build());
     }

@@ -15,11 +15,12 @@ import java.time.Duration;
 
 /**
  * The ai2 agent's chat model. Injected by name only ({@code @Qualifier(Ai2ModelConfig.CHAT_MODEL)}): it is not a
- * default candidate, so code asking for "a ChatModel" by type (the old {@code ai} package) never gets it.
+ * default candidate, so code asking for "a ChatModel" by type (the old {@code ai} package) never gets it. ai2 code calls
+ * it only through {@link ModelGateway} (retries, trace, token usage). The Responses model has no retries of its own.
  */
-// TODO record token usage of ai2 model calls.
 @Configuration
-@EnableConfigurationProperties({Ai2ModelProperties.class, Ai2PromptProperties.class, Ai2ReplyProperties.class})
+@EnableConfigurationProperties({Ai2ModelProperties.class, Ai2PromptProperties.class, Ai2ReplyProperties.class,
+        Ai2RunProperties.class})
 public class Ai2ModelConfig {
 
     public static final String CHAT_MODEL = "ai2ChatModel";

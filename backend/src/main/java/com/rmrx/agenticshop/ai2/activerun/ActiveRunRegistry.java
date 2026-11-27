@@ -4,8 +4,6 @@ import com.rmrx.agenticshop.ai2.contract.interaction.InteractionJson;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Component;
@@ -101,15 +99,16 @@ public class ActiveRunRegistry {
     }
 
     /**
-     * Runs still RUNNING at startup were cut off by the previous shutdown and will never finish: unlock their
-     * conversations (their checkpoints go with them). PAUSED runs stay; they can still be answered.
+     * Removes every RUNNING run (with its checkpoints) and returns them. Called at startup: such runs were cut off by
+     * the previous shutdown and will never finish. PAUSED runs stay; they can still be answered.
      */
     // TODO with more than one instance this must only drop runs of a dead instance (owner + heartbeat), or resume
     //  them from their checkpoints.
-    @EventListener(ApplicationReadyEvent.class)
-    public void dropInterruptedRuns() {
-        int dropped = jdbc.update("delete from ai2_active_run where status = 'RUNNING'");
-        if (dropped > 0) log.warn("ai2: dropped {} run(s) interrupted by the last shutdown", dropped);
+    public List<ActiveRun> dropInterrupted() {
+        List<ActiveRun> dropped = jdbc.query("delete from ai2_active_run where status = 'RUNNING' returning "
+                + COLUMNS, mapper);
+        if (!dropped.isEmpty()) log.warn("ai2: dropped {} run(s) interrupted by the last shutdown", dropped.size());
+        return dropped;
     }
 
     private static Optional<ActiveRun> first(List<ActiveRun> runs) {

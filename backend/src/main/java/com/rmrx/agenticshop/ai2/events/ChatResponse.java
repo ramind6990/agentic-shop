@@ -48,8 +48,8 @@ public record ChatResponse(Type type, String requestId, Long conversationId, UUI
     }
 
     /**
-     * A progress notice: label is user-facing (the tool's rendered {@code @ToolLabel}); success and durationMs are set
-     * once the tool finished.
+     * A progress notice: label is user-facing (the tool's rendered {@code @ToolLabel}, or the notice text); success and
+     * durationMs are set once the tool finished.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Progress(Stage stage, String label, String toolName, Boolean success, Long durationMs) {
@@ -57,7 +57,11 @@ public record ChatResponse(Type type, String requestId, Long conversationId, UUI
 
     public enum Stage {
         TOOL_STARTED,
-        TOOL_FINISHED
+        TOOL_FINISHED,
+        /** A model call failed and is retried; label: "Request failed. Retrying (2/5)". */
+        RETRYING,
+        /** The model works again after a retry; label: "Thinking…". */
+        THINKING
     }
 
     /** retryable tells the client whether sending again may help. */

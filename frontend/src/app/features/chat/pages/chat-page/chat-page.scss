@@ -48,6 +48,17 @@
   border-bottom: 1px solid $app-border-color;
 }
 
+.chat-usage {
+  padding: 0.3rem 0;
+  background: $app-surface;
+  border-bottom: 1px solid $app-border-color;
+  color: $text-muted;
+
+  .chat-column {
+    padding: 0 1rem;
+  }
+}
+
 .status-dot {
   width: 0.5rem;
   height: 0.5rem;

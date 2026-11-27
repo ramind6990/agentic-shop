@@ -9,13 +9,14 @@ import com.rmrx.agenticshop.ai2.memory.HistoryProvider;
 import com.rmrx.agenticshop.ai2.checkpointer.JdbcCheckpointSaver;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
-import com.rmrx.agenticshop.ai2.model.Ai2ModelConfig;
 import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
+import com.rmrx.agenticshop.ai2.model.Ai2RunProperties;
+import com.rmrx.agenticshop.ai2.model.ModelGateway;
 import com.rmrx.agenticshop.ai2.model.SystemPrompt;
 import com.rmrx.agenticshop.ai2.tools.ToolCallExecutor;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
+import com.rmrx.agenticshop.ai2.trace.TraceRecorder;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.ChatModel;
 import org.bsc.langgraph4j.CompiledGraph;
 import org.bsc.langgraph4j.GraphInput;
 import org.bsc.langgraph4j.GraphResult;
@@ -24,7 +25,6 @@ import org.bsc.langgraph4j.RunnableConfig;
 import org.bsc.langgraph4j.action.InterruptionMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -45,9 +45,10 @@ public class GraphRunner {
     private final JdbcCheckpointSaver checkpoints;
 
     public GraphRunner(ToolRegistry registry, ToolCallExecutor executor, JdbcCheckpointSaver checkpoints,
-                       @Qualifier(Ai2ModelConfig.CHAT_MODEL) ChatModel model, SystemPrompt systemPrompt,
-                       Ai2ReplyProperties reply, HistoryProvider historyProvider) throws GraphStateException {
-        this.graph = new RunGraph(checkpoints, registry, executor, model, systemPrompt, reply, historyProvider).graph();
+                       ModelGateway model, SystemPrompt systemPrompt, Ai2ReplyProperties reply, Ai2RunProperties run,
+                       HistoryProvider historyProvider, TraceRecorder trace) throws GraphStateException {
+        this.graph = new RunGraph(new RunGraph.Dependencies(checkpoints, registry, executor, model, systemPrompt,
+                reply, run, historyProvider, trace)).graph();
         this.checkpoints = checkpoints;
     }
 

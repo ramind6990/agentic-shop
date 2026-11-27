@@ -1,24 +1,22 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
 
+import { MarkdownText } from '../../../../shared/ui/markdown-text/markdown-text';
 import { ReplyEnvelope } from '../../models/chat.model';
-import { OrderCards } from '../item-cards/order-cards';
-import { ProductCards } from '../item-cards/product-cards';
+import { ReplyBlock } from '../blocks/reply-block';
 
-/** The assistant's reply: its text, then its items as cards, then the suggested replies. */
+/** The assistant's reply: its text (markdown), then its block as cards, then the suggested replies. */
 @Component({
   selector: 'app-reply-view',
-  imports: [ProductCards, OrderCards],
+  imports: [MarkdownText, ReplyBlock],
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'd-flex flex-column gap-2' },
   template: `
-    <p class="mb-0 reply-text" [class.text-body-secondary]="reply().status === 'REFUSED'">{{ reply().text }}</p>
-    @switch (reply().blockType) {
-      @case ('PRODUCT_LIST') {
-        <app-product-cards [items]="reply().productList ?? []" />
-      }
-      @case ('ORDER_LIST') {
-        <app-order-cards [items]="reply().orderList ?? []" />
-      }
+    <app-markdown-text
+      [text]="reply().text"
+      [class.text-body-secondary]="reply().status === 'REFUSED'"
+    />
+    @if (reply().block; as block) {
+      <app-reply-block [block]="block" />
     }
     @if (showSuggestions() && reply().suggestedReplies.length > 0) {
       <div class="d-flex flex-wrap gap-2" role="group" aria-label="Suggested replies">
@@ -34,11 +32,6 @@ import { ProductCards } from '../item-cards/product-cards';
           </button>
         }
       </div>
-    }
-  `,
-  styles: `
-    .reply-text {
-      white-space: pre-wrap;
     }
   `,
 })

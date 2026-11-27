@@ -20,16 +20,18 @@ public class HistoryProvider {
     private final ConversationSummarizer summarizer;
     private final ConversationMemoryStore memories;
     private final ConversationMessageStore messages;
+    private final Ai2MemoryProperties props;
 
     public HistoryProvider(ConversationSummarizer summarizer, ConversationMemoryStore memories,
-                           ConversationMessageStore messages) {
+                           ConversationMessageStore messages, Ai2MemoryProperties props) {
         this.summarizer = summarizer;
         this.memories = memories;
         this.messages = messages;
+        this.props = props;
     }
 
     public List<ChatMessage> history(RunContext context) {
-        summarizer.summarizeIfDue(context.conversationId(), context.runId());
+        summarizer.summarizeIfDue(context);
         Optional<ConversationMemory> memory = memories.find(context.conversationId());
         long through = memory.map(ConversationMemory::summarizedThroughMessageId).orElse(0L);
 
@@ -39,5 +41,14 @@ public class HistoryProvider {
         history.addAll(HistoryProjection.toChatMessages(
                 messages.listAfter(context.conversationId(), through, context.runId())));
         return history;
+    }
+
+    /** The conversation's memory now (summary size, messages after it) and the limits that apply to it. */
+    public MemoryState memoryState(Long conversationId) {
+        Optional<ConversationMemory> memory = memories.find(conversationId);
+        long through = memory.map(ConversationMemory::summarizedThroughMessageId).orElse(0L);
+        return new MemoryState(memory.isPresent(), memory.map(m -> m.summary().length()).orElse(0),
+                props.maxSummaryChars(), props.hardLimitChars(), messages.countAfter(conversationId, through, null),
+                props.summarizeAfter(), props.keepRecent());
     }
 }

@@ -28,6 +28,13 @@
       "port": 8080
     },
     {
+      "name": "backend-model-down",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
+        "-Dspring-boot.run.arguments=--app.ai2.model.base-url=http://localhost:9/v1 --app.ai2.model.retry.max-retries=3 --app.ai2.model.retry.initial-backoff=700ms"],
+      "port": 8080
+    },
+    {
       "name": "backend-tiny-memory",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",

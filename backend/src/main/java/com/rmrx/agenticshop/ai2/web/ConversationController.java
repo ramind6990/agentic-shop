@@ -28,7 +28,6 @@ import java.util.List;
  * that is not the caller's; 409 while a reply is still being prepared, when there is no question to answer, or when
  * the conversation is full.
  */
-// TODO the response is the raw run outcome until the reply envelope exists.
 @RestController("ai2ConversationController")
 @RequestMapping("/api/ai2/conversations")
 @PreAuthorize("hasAuthority('AI_CHAT')")

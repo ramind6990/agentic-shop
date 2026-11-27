@@ -379,6 +379,11 @@ public class InMemoryRunEventBus implements RunEventBus {
         }
 
         @Override
+        public void notice(Stage stage, String label) {
+            progress(new Progress(stage, label, null, null, null));
+        }
+
+        @Override
         public void complete(ReplyEnvelope reply) {
             emit("REPLY", seq -> ChatResponse.reply(runId(), channel.conversationId, seq, reply), true);
         }

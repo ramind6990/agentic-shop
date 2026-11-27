@@ -9,5 +9,5 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param version the prompt version, e.g. {@code v2} (see {@link SystemPrompt})
  */
 @ConfigurationProperties("app.ai2.prompt")
-public record Ai2PromptProperties(@DefaultValue("v2") String version) {
+public record Ai2PromptProperties(@DefaultValue("v3") String version) {
 }

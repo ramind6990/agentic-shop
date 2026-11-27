@@ -16,6 +16,14 @@
     }
   </header>
 
+  @if (store.chatUsage() || store.myUsage()) {
+    <div class="chat-usage">
+      <div class="chat-column">
+        <app-usage-bar [chat]="store.chatUsage()" [me]="store.myUsage()" />
+      </div>
+    </div>
+  }
+
   <div class="chat-scroll" #scroller>
     <div class="chat-column" aria-live="polite">
       @if (store.detailError(); as err) {
@@ -67,9 +75,14 @@
           }
           @case ('error') {
             @if (item.stopped) {
-              <div class="small text-body-secondary fst-italic" role="status">{{ item.message }}</div>
+              <div class="small text-body-secondary fst-italic" role="status">
+                {{ item.message }}
+              </div>
             } @else {
-              <div class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-0" role="status">
+              <div
+                class="alert alert-warning d-flex align-items-center gap-2 py-2 mb-0"
+                role="status"
+              >
                 <span class="me-auto">{{ item.message }}</span>
                 @if (item.retryText; as text) {
                   <button
@@ -88,10 +101,7 @@
       }
 
       @if (store.progress(); as label) {
-        <div class="progress-line" role="status">
-          <span class="spinner-border spinner-border-sm text-primary" aria-hidden="true"></span>
-          {{ label }}
-        </div>
+        <app-progress-line class="progress-line" [label]="label" />
       }
     </div>
   </div>

@@ -36,6 +36,12 @@ public class RunState extends AgentState {
     /** Model calls made in this run; written by the model call node. */
     public static final String MODEL_CALL_COUNT = "modelCallCount";
 
+    /** Input + output tokens of this run's own model calls (the token budget); written by the model call node. */
+    public static final String TOKENS_USED = "tokensUsed";
+
+    /** Whether the last model call could call tools (false: the run's budget forced a final answer). */
+    public static final String LAST_CALL_TOOLS_ON = "lastCallToolsOn";
+
     /** How the last model step ended ({@link ValidationOutcome}); written by the validation node on every pass. */
     public static final String VALIDATION_OUTCOME = "validationOutcome";
 
@@ -104,6 +110,14 @@ public class RunState extends AgentState {
 
     public int modelCallCount() {
         return this.<Integer>value(MODEL_CALL_COUNT).orElse(0);
+    }
+
+    public int tokensUsed() {
+        return this.<Integer>value(TOKENS_USED).orElse(0);
+    }
+
+    public boolean lastCallToolsOn() {
+        return this.<Boolean>value(LAST_CALL_TOOLS_ON).orElse(true);
     }
 
     public ValidationOutcome validationOutcome() {

@@ -48,6 +48,15 @@ public class ConversationMessageStore {
                 display == null ? null : InteractionJson.write(display), InteractionJson.write(reply), null, null);
     }
 
+    /**
+     * What the user gets when a run ends without a reply (FAILED or STOPPED envelope): an ASSISTANT message with the
+     * envelope only, so the timeline never leaves the user's message unanswered.
+     */
+    public void appendOutcome(Long conversationId, UUID runId, ReplyEnvelope reply) {
+        insert(conversationId, runId, MessageKind.ASSISTANT, reply.text(), null, null, InteractionJson.write(reply),
+                null, null);
+    }
+
     /** A question or approval the run paused on, PENDING until answered or abandoned. */
     public void appendInteraction(Long conversationId, UUID runId, PendingInteraction interaction) {
         insert(conversationId, runId, MessageKind.INTERACTION, interaction.promptText(),

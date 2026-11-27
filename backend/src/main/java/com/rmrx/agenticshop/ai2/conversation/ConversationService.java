@@ -40,14 +40,17 @@ public class ConversationService {
     private final ActiveRunRegistry activeRuns;
     private final GraphRunner runner;
     private final RunLauncher launcher;
+    private final RunRecorder recorder;
 
     public ConversationService(ConversationStore conversations, ConversationMessageStore messages,
-                               ActiveRunRegistry activeRuns, GraphRunner runner, RunLauncher launcher) {
+                               ActiveRunRegistry activeRuns, GraphRunner runner, RunLauncher launcher,
+                               RunRecorder recorder) {
         this.conversations = conversations;
         this.messages = messages;
         this.activeRuns = activeRuns;
         this.runner = runner;
         this.launcher = launcher;
+        this.recorder = recorder;
     }
 
     /**
@@ -64,7 +67,7 @@ public class ConversationService {
             if (current.status() == ActiveRun.Status.RUNNING) {
                 throw new ConversationConflictException("A reply is still being prepared in this conversation.");
             }
-            activeRuns.takePaused(conversation.id()).ifPresent(this::abandon);
+            activeRuns.takePaused(conversation.id()).ifPresent(recorder::abandoned);
         });
         ActiveRun run = activeRuns.tryStart(conversation.id(), userId)
                 .orElseThrow(() -> new ConversationConflictException("Another run started in this conversation."));
@@ -96,7 +99,7 @@ public class ConversationService {
                     () -> runner.resume(conversationId, resumed.runId(), pending.callId(), answer));
         }
         return activeRuns.takePaused(conversationId)
-                .map(this::abandon)
+                .map(recorder::abandoned)
                 .orElseThrow(() -> new ConversationConflictException("This question was already answered."));
     }
 
@@ -130,13 +133,6 @@ public class ConversationService {
     public List<ConversationMessage> timeline(Long userId, Long conversationId) {
         owned(conversationId, userId);
         return messages.list(conversationId);
-    }
-
-    /** Drops a paused run already removed from the registry; its question stays in the timeline as NOT_ANSWERED. */
-    private RunOutcome.Abandoned abandon(ActiveRun paused) {
-        runner.discard(paused.runId());
-        messages.resolveInteraction(paused.pendingInteraction().interactionId(), InteractionStatus.NOT_ANSWERED, null);
-        return new RunOutcome.Abandoned(paused.conversationId(), paused.runId(), paused.pendingInteraction());
     }
 
     /** The conversation, when it belongs to the user; 404 otherwise (another user's conversation is not revealed). */

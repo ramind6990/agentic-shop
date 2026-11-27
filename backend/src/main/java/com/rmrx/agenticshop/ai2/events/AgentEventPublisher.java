@@ -23,6 +23,9 @@ public interface AgentEventPublisher {
     /** PROGRESS TOOL_FINISHED. */
     void toolFinished(String toolName, boolean success, long durationMs);
 
+    /** PROGRESS with a user-facing notice that is not about a tool (RETRYING, THINKING). */
+    void notice(ChatResponse.Stage stage, String label);
+
     /** REPLY; closes the stream. */
     void complete(ReplyEnvelope reply);
 

@@ -43,17 +43,17 @@ public class ToolCallExecutor {
     static final String NOT_SHOWN = " (not shown to the user: write what they need from it in your reply text)";
 
     private final ToolRegistry registry;
-    private final ToolProgress progress;
+    private final ToolCallTracker tracker;
     private final AccessScope scope;
 
-    public ToolCallExecutor(ToolRegistry registry, ToolProgress progress, AccessScope scope) {
+    public ToolCallExecutor(ToolRegistry registry, ToolCallTracker tracker, AccessScope scope) {
         this.registry = registry;
-        this.progress = progress;
+        this.tracker = tracker;
         this.scope = scope;
     }
 
     public ExecutedCall execute(ToolExecutionRequest call, RunContext context, String ref) {
-        return progress.track(call, context, () -> run(call, context, ref));
+        return tracker.track(call, context, () -> run(call, context, ref));
     }
 
     private ExecutedCall run(ToolExecutionRequest call, RunContext context, String ref) {

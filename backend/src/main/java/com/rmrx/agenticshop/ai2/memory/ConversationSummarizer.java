@@ -3,14 +3,14 @@ package com.rmrx.agenticshop.ai2.memory;
 import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessage;
 import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessageStore;
 import com.rmrx.agenticshop.ai2.conversation.store.ConversationStore;
-import com.rmrx.agenticshop.ai2.model.Ai2ModelConfig;
+import com.rmrx.agenticshop.ai2.graph.state.RunContext;
+import com.rmrx.agenticshop.ai2.model.ModelCall;
+import com.rmrx.agenticshop.ai2.model.ModelGateway;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.ChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -19,29 +19,29 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 /**
  * Folds a conversation's older messages into its summary. Runs inside a run (the conversation's active run is held,
  * so nothing else writes its memory meanwhile), before the history is built, and only when due: more than
  * {@code summarizeAfter} messages of earlier runs are not in the summary. The newest {@code keepRecent} stay word for
- * word. A summary that ends up over {@code hardLimitChars} closes the conversation.
+ * word. A summary that ends up over {@code hardLimitChars} closes the conversation. The model call is SYSTEM usage
+ * (traced in the run that triggered it) and is not retried.
  */
 @Component("ai2ConversationSummarizer")
 public class ConversationSummarizer {
 
     private static final Logger log = LoggerFactory.getLogger(ConversationSummarizer.class);
 
-    private final ChatModel model;
+    private final ModelGateway model;
     private final ConversationMessageStore messages;
     private final ConversationMemoryStore memories;
     private final ConversationStore conversations;
     private final Ai2MemoryProperties props;
     private final String instructions;
 
-    public ConversationSummarizer(@Qualifier(Ai2ModelConfig.CHAT_MODEL) ChatModel model,
-                                  ConversationMessageStore messages, ConversationMemoryStore memories,
-                                  ConversationStore conversations, Ai2MemoryProperties props) {
+    public ConversationSummarizer(ModelGateway model, ConversationMessageStore messages,
+                                  ConversationMemoryStore memories, ConversationStore conversations,
+                                  Ai2MemoryProperties props) {
         this.model = model;
         this.messages = messages;
         this.memories = memories;
@@ -52,20 +52,22 @@ public class ConversationSummarizer {
     }
 
     /**
-     * Summarizes when due; never throws (a failure only leaves the history unsummarized).
-     *
-     * @param currentRunId the run asking; its own messages are never summarized
+     * Summarizes when due; never throws (a failure only leaves the history unsummarized). The asking run's own
+     * messages are never summarized.
      */
-    public void summarizeIfDue(Long conversationId, UUID currentRunId) {
+    public void summarizeIfDue(RunContext context) {
+        Long conversationId = context.conversationId();
         try {
             Optional<ConversationMemory> memory = memories.find(conversationId);
             long through = memory.map(ConversationMemory::summarizedThroughMessageId).orElse(0L);
-            if (messages.countAfter(conversationId, through, currentRunId) <= props.summarizeAfter()) return;
+            if (messages.countAfter(conversationId, through, context.runId()) <= props.summarizeAfter()) return;
 
-            List<ConversationMessage> unsummarized = messages.listAfter(conversationId, through, currentRunId);
+            List<ConversationMessage> unsummarized = messages.listAfter(conversationId, through, context.runId());
             List<ConversationMessage> fold = unsummarized.subList(0, unsummarized.size() - props.keepRecent());
-            String summary = summarize(memory.map(ConversationMemory::summary).orElse(""),
-                    HistoryProjection.toTranscript(fold));
+            String note = "fold " + fold.size() + " messages (ids " + fold.getFirst().id() + ".." + fold.getLast().id()
+                    + ") into the summary";
+            String summary = summarize(ModelCall.summary(context, note),
+                    memory.map(ConversationMemory::summary).orElse(""), HistoryProjection.toTranscript(fold));
             memories.save(conversationId, summary, fold.getLast().id());
             log.info("ai2: conversation {} summarized through message {} ({} chars)", conversationId,
                     fold.getLast().id(), summary.length());
@@ -80,12 +82,12 @@ public class ConversationSummarizer {
         }
     }
 
-    private String summarize(String currentSummary, String transcript) {
+    private String summarize(ModelCall call, String currentSummary, String transcript) {
         String input = "Current summary:\n" + (currentSummary.isBlank() ? "(none)" : currentSummary)
                 + "\n\nMessages after it:\n" + transcript;
         String summary = model.chat(ChatRequest.builder()
                 .messages(SystemMessage.from(instructions), UserMessage.from(input))
-                .build()).aiMessage().text();
+                .build(), call).aiMessage().text();
         if (summary == null || summary.isBlank()) throw new IllegalStateException("empty summary");
         return summary.strip();
     }

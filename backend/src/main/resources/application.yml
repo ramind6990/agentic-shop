@@ -126,9 +126,18 @@ app:
       timeout: 60s
       log-requests: false
       log-responses: false
+      # transient errors (rate limits, timeouts, 5xx, network) of the agent's model calls; the user sees
+      # "Request failed. Retrying (n/max)". Backoff doubles from initial-backoff up to max-backoff (±20% jitter).
+      retry:
+        max-retries: ${AI2_MODEL_MAX_RETRIES:5}
+        initial-backoff: 1s
+        max-backoff: 20s
+    # budget of one run: once its model calls used this many tokens (input + output), the next call answers without tools
+    run:
+      max-tokens: ${AI2_RUN_MAX_TOKENS:200000}
     # system prompt: prompts/ai2/<version>/base.md + customer.md / staff.md (or prompts/ai2/system-<version>.md)
     prompt:
-      version: ${AI2_PROMPT_VERSION:v2}
+      version: ${AI2_PROMPT_VERSION:v3}
     # limits of the final reply: told to the model in the prompt and enforced by the output validation
     reply:
       max-text-length: 600

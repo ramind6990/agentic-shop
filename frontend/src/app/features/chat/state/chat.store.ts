@@ -70,6 +70,19 @@ export class ChatStore {
   readonly detailLoading = this.detail$.loading;
   readonly detailError = this.detail$.error;
 
+  /** Tokens of the open conversation and its context; reloaded whenever one of its runs ends. */
+  private readonly chatUsage$ = loadOnChange(
+    () => this.conversationId(),
+    (id) => this.api.conversationUsage(id),
+  );
+  readonly chatUsage = computed(() => this.chatUsage$.value() ?? null);
+  /** The user's tokens this month; reloaded whenever any of their runs ends. */
+  private readonly myUsage$ = loadOnChange(
+    () => true,
+    () => this.api.myUsage(),
+  );
+  readonly myUsage = computed(() => this.myUsage$.value() ?? null);
+
   private readonly _items = signal<ChatItem[]>([]);
   private readonly _progress = signal<string | null>(null);
   private readonly _running = signal<{ runId: string; conversationId: number } | null>(null);
@@ -188,6 +201,8 @@ export class ChatStore {
     const conversationId = m.conversationId;
     if (conversationId === undefined) return;
     this.markBusy(conversationId, m.type === 'INPUT' || m.type === 'PROGRESS');
+    const runEnded = m.type === 'REPLY' || m.type === 'INTERACTION' || m.type === 'ERROR';
+    if (runEnded) this.myUsage$.reload();
     if (m.type === 'INPUT') {
       if (mine && pending?.conversationId === null) this.adopt(conversationId);
       if (!this.conversations().some((c) => c.id === conversationId)) this.list$.reload();
@@ -196,18 +211,22 @@ export class ChatStore {
       if (m.type === 'REPLY') this.list$.reload();
       return;
     }
+    if (runEnded) this.chatUsage$.reload();
     switch (m.type) {
       case 'INPUT':
         this.onInput(m, mine);
         break;
       case 'PROGRESS':
-        this._progress.set(
-          m.progress?.stage === 'TOOL_STARTED' ? (m.progress.label ?? WORKING) : THINKING,
-        );
+        this._progress.set(progressLabel(m.progress));
         break;
       case 'REPLY':
         if (m.reply && !this.hasItem('reply', m.runId)) {
-          this.append({ kind: 'reply', key: `reply-${m.runId}`, runId: m.runId ?? null, reply: m.reply });
+          this.append({
+            kind: 'reply',
+            key: `reply-${m.runId}`,
+            runId: m.runId ?? null,
+            reply: m.reply,
+          });
         }
         this.endRun();
         this.list$.reload();
@@ -215,7 +234,8 @@ export class ChatStore {
       case 'INTERACTION': {
         const interaction = m.interaction!;
         const known = this._items().some(
-          (i) => i.kind === 'interaction' && i.interaction.interactionId === interaction.interactionId,
+          (i) =>
+            i.kind === 'interaction' && i.interaction.interactionId === interaction.interactionId,
         );
         if (!known) {
           this.append({
@@ -236,7 +256,8 @@ export class ChatStore {
           kind: 'error',
           key: `err-${m.runId}-${m.seq}`,
           runId: m.runId ?? null,
-          message: code === 'CANCELLED' ? 'Stopped.' : (m.error?.message ?? 'Something went wrong.'),
+          message:
+            code === 'CANCELLED' ? 'Stopped.' : (m.error?.message ?? 'Something went wrong.'),
           retryText: code === 'AGENT_ERROR' ? this.lastUserText() : null,
           stopped: code === 'CANCELLED',
         });
@@ -309,7 +330,7 @@ export class ChatStore {
   private show(detail: ConversationDetail): void {
     if (detail.id !== this.conversationId()) return;
     const run = detail.activeRun;
-    this._items.set(detail.messages.map((m) => toItem(m, detail)));
+    this._items.set(toItems(detail));
     this._status.set(detail.status);
     const running = run?.status === 'RUNNING';
     this._running.set(running ? { runId: run.runId, conversationId: detail.id } : null);
@@ -367,23 +388,52 @@ function withInteractions(
   return items.map((i) => (i.kind === 'interaction' && match(i) ? { ...i, ...change } : i));
 }
 
-function toItem(m: TimelineMessage, detail: ConversationDetail): ChatItem {
+/** What a progress notice shows: the tool's label, a notice's own label, or "Thinking…" after a tool. */
+function progressLabel(progress: ChatResponse['progress']): string {
+  switch (progress?.stage) {
+    case 'TOOL_STARTED':
+      return progress.label ?? WORKING;
+    case 'RETRYING':
+      return progress.label ?? 'Request failed. Retrying…';
+    default:
+      return progress?.label ?? THINKING;
+  }
+}
+
+/** The timeline as page items; a failed reply offers to send the user's message again. */
+function toItems(detail: ConversationDetail): ChatItem[] {
+  let lastUserText: string | null = null;
+  return detail.messages.map((m) => {
+    const item = toItem(m, detail, lastUserText);
+    if (m.kind === 'USER') lastUserText = m.text;
+    return item;
+  });
+}
+
+function toItem(
+  m: TimelineMessage,
+  detail: ConversationDetail,
+  lastUserText: string | null,
+): ChatItem {
   const key = `m-${m.id}`;
   switch (m.kind) {
     case 'USER':
       return { kind: 'user', key, runId: m.runId, text: m.text ?? '' };
-    case 'ASSISTANT':
-      return {
-        kind: 'reply',
-        key,
-        runId: m.runId,
-        reply: m.reply ?? {
-          status: 'ANSWERED',
-          text: m.text ?? '',
-          blockType: 'NONE',
-          suggestedReplies: [],
-        },
-      };
+    case 'ASSISTANT': {
+      const reply = m.reply ?? { status: 'ANSWERED', text: m.text ?? '', suggestedReplies: [] };
+      if (reply.status === 'FAILED' || reply.status === 'STOPPED') {
+        const stopped = reply.status === 'STOPPED';
+        return {
+          kind: 'error',
+          key,
+          runId: m.runId,
+          message: reply.text,
+          retryText: stopped ? null : lastUserText,
+          stopped,
+        };
+      }
+      return { kind: 'reply', key, runId: m.runId, reply };
+    }
     case 'INTERACTION':
       return {
         kind: 'interaction',

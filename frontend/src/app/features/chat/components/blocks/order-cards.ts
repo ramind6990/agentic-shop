@@ -18,7 +18,9 @@ import { OrderItem } from '../../models/chat.model';
             <div class="d-flex flex-wrap align-items-center gap-2">
               <span class="fw-semibold">{{ o.orderNumber }}</span>
               <app-status-badge [status]="o.status" />
-              <span class="small text-body-secondary">placed {{ o.placedAt | date: 'MMM d, y' }}</span>
+              <span class="small text-body-secondary"
+                >placed {{ o.placedAt | date: 'MMM d, y' }}</span
+              >
               <app-price class="ms-auto" [price]="o.total" [currency]="o.currency" />
             </div>
             <div class="small mt-1">

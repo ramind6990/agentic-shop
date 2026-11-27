@@ -13,7 +13,11 @@ import com.rmrx.agenticshop.ai2.graph.state.StepPlan;
 import com.rmrx.agenticshop.ai2.graph.state.ValidationOutcome;
 import com.rmrx.agenticshop.ai2.model.Ai2ReplyProperties;
 import com.rmrx.agenticshop.ai2.tools.ToolCatalog;
+import com.rmrx.agenticshop.ai2.tools.ToolCategory;
 import com.rmrx.agenticshop.ai2.tools.ToolRegistry;
+import com.rmrx.agenticshop.ai2.trace.StepType;
+import com.rmrx.agenticshop.ai2.trace.TraceRecorder;
+import com.rmrx.agenticshop.ai2.trace.TraceStep;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -26,8 +30,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeSet;
+import java.util.stream.Collectors;
 
 /**
  * Validates the model's output: either a batch of tool calls (mixing rules, duplicate calls, per-step cap) or the
@@ -35,15 +41,21 @@ import java.util.TreeSet;
  * <p>
  * Writes {@link RunState#VALIDATION_OUTCOME}, {@link RunState#VALIDATION_RETRIES} and {@link RunState#STEP_PLAN} on
  * every pass (so the routes never read a value from an earlier step), and {@link RunState#RESPONSE} when the run ends.
+ * Every rejected output and every dropped tool call is written to the run's trace (a VALIDATION step).
  */
 public class OutputValidationNode implements NodeActionWithConfig<RunState> {
 
+    static final String SKIPPED = "Skipped: more than " + RunLimits.MAX_CALLS_PER_STEP + " tool calls in one step. "
+            + "Call it again in a later step if you still need it.";
+
     private final ToolRegistry registry;
     private final Ai2ReplyProperties reply;
+    private final TraceRecorder trace;
 
-    public OutputValidationNode(ToolRegistry registry, Ai2ReplyProperties reply) {
+    public OutputValidationNode(ToolRegistry registry, Ai2ReplyProperties reply, TraceRecorder trace) {
         this.reply = reply;
         this.registry = registry;
+        this.trace = trace;
     }
 
     @Override
@@ -57,17 +69,22 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
 
     private Map<String, Object> validateToolCalls(RunState state, AiMessage ai) {
         List<ToolExecutionRequest> requests = ai.toolExecutionRequests();
-        if (budgetExhausted(state)) {
-            // the last call was made with tools off; tool calls now cannot be honoured
-            return failure(state, errorResults(requests, "Not executed: the tool budget of this run is used up."));
+        if (!state.lastCallToolsOn()) {
+            // the call was made with tools off (budget used up); tool calls now cannot be honoured
+            String error = "Not executed: the tool budget of this run is used up. Give your final reply now.";
+            return failure(state, errorResults(requests, error), "tool calls after the budget: " + names(requests));
         }
         ToolCatalog tools = registry.catalog(state.context());
         List<String> errors = checkToolCalls(tools, requests);
-        if (!errors.isEmpty()) return failure(state, errorResults(requests, String.join("; ", errors)));
+        if (!errors.isEmpty()) {
+            String error = String.join("; ", errors);
+            return failure(state, errorResults(requests, error), error);
+        }
 
-        List<ChatMessage> results = new ArrayList<>();          // results for calls that will not run
+        List<ToolExecutionResultMessage> results = new ArrayList<>(); // results for calls that will not run
         List<ToolExecutionRequest> kept = capStepCalls(requests, results);
-        kept = dropDuplicateCalls(state, kept, results);
+        kept = dropDuplicateCalls(state, tools, kept, results);
+        traceDropped(state, results);
         StepPlan plan = classifyToolCalls(tools, kept);
         results.addAll(deferredResults(plan, kept));
 
@@ -94,20 +111,82 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
      * Keeps the first {@link RunLimits#MAX_CALLS_PER_STEP} calls in the model's order; each other call gets its own
      * "skipped" result in {@code results}.
      */
-    private List<ToolExecutionRequest> capStepCalls(List<ToolExecutionRequest> requests, List<ChatMessage> results) {
-        // TODO cap; skipped calls: "Skipped: more than N calls in one step. Call it again in a later step if still
-        //  needed."
-        return requests;
+    private List<ToolExecutionRequest> capStepCalls(List<ToolExecutionRequest> requests,
+                                                    List<ToolExecutionResultMessage> results) {
+        if (requests.size() <= RunLimits.MAX_CALLS_PER_STEP) return requests;
+        requests.subList(RunLimits.MAX_CALLS_PER_STEP, requests.size())
+                .forEach(r -> results.add(ToolExecutionResultMessage.from(r, SKIPPED)));
+        return requests.subList(0, RunLimits.MAX_CALLS_PER_STEP);
     }
 
     /**
-     * Removes calls with the same tool and arguments as a call earlier in this run; each gets an "already called,
-     * result unchanged" result in {@code results}.
+     * Removes calls with the same tool and arguments as an earlier call of this run (or of this step); each gets an
+     * "already called" result in {@code results} pointing to the earlier result. Only calls after the run's last
+     * sensitive call count: an action may have changed what a read returns.
      */
-    private List<ToolExecutionRequest> dropDuplicateCalls(RunState state, List<ToolExecutionRequest> requests,
-                                                          List<ChatMessage> results) {
-        // TODO compare with the tool calls of earlier AI messages in state.messages()
-        return requests;
+    private List<ToolExecutionRequest> dropDuplicateCalls(RunState state, ToolCatalog tools,
+                                                          List<ToolExecutionRequest> requests,
+                                                          List<ToolExecutionResultMessage> results) {
+        Map<CallKey, String> earlier = earlierCalls(state, tools);
+        List<ToolExecutionRequest> kept = new ArrayList<>();
+        for (ToolExecutionRequest r : requests) {
+            CallKey key = CallKey.of(r);
+            if (earlier.containsKey(key)) {
+                String ref = earlier.get(key);
+                results.add(ToolExecutionResultMessage.from(r, "Not executed: already called with the same "
+                        + "arguments in this request; "
+                        + (ref == null ? "use its earlier result." : "use its result (ref " + ref + ").")));
+            } else {
+                earlier.put(key, null);
+                kept.add(r);
+            }
+        }
+        return kept;
+    }
+
+    /** Calls of earlier steps since the last step with a sensitive call, with the ref of their result (or null). */
+    private Map<CallKey, String> earlierCalls(RunState state, ToolCatalog tools) {
+        Map<String, String> refByCallId = state.toolResults().values().stream()
+                .collect(Collectors.toMap(ToolResult::callId, ToolResult::ref, (a, b) -> a));
+        List<ChatMessage> messages = state.messages();
+        Map<CallKey, String> calls = new HashMap<>();
+        // the last AI message is the step being validated
+        for (int i = lastAiIndex(messages) - 1; i >= 0; i--) {
+            if (!(messages.get(i) instanceof AiMessage ai) || !ai.hasToolExecutionRequests()) continue;
+            if (ai.toolExecutionRequests().stream()
+                    .anyMatch(r -> tools.category(r.name()).orElse(null) == ToolCategory.SENSITIVE)) break;
+            ai.toolExecutionRequests().forEach(r -> calls.putIfAbsent(CallKey.of(r), refByCallId.get(r.id())));
+        }
+        return calls;
+    }
+
+    private static int lastAiIndex(List<ChatMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            if (messages.get(i) instanceof AiMessage) return i;
+        }
+        return messages.size();
+    }
+
+    /** A tool call's identity for duplicate checks: its name and its arguments as a JSON tree (key order ignored). */
+    private record CallKey(String name, Object arguments) {
+
+        static CallKey of(ToolExecutionRequest r) {
+            Object arguments;
+            try {
+                arguments = r.arguments() == null || r.arguments().isBlank()
+                        ? "{}" : InteractionJson.tree(r.arguments());
+            } catch (RuntimeException e) {
+                arguments = r.arguments();
+            }
+            return new CallKey(r.name(), Objects.requireNonNullElse(arguments, "{}"));
+        }
+    }
+
+    private void traceDropped(RunState state, List<ToolExecutionResultMessage> dropped) {
+        if (dropped.isEmpty()) return;
+        trace.step(state.context().runId(), TraceStep.of(StepType.VALIDATION, "tool calls dropped",
+                dropped.stream().map(ToolExecutionResultMessage::toolName).collect(Collectors.joining(", ")),
+                dropped.stream().map(ToolExecutionResultMessage::text).distinct().collect(Collectors.joining(" | "))));
     }
 
     /** Sorts the calls by tool category; sensitive calls are deferred when the step also asks the user something. */
@@ -126,16 +205,20 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         return new StepPlan(read, ask, sensitive, List.of());
     }
 
-    private List<ChatMessage> deferredResults(StepPlan plan, List<ToolExecutionRequest> requests) {
+    private List<ToolExecutionResultMessage> deferredResults(StepPlan plan, List<ToolExecutionRequest> requests) {
         return requests.stream()
                 .filter(r -> plan.deferredCallIds().contains(r.id()))
-                .<ChatMessage>map(r -> ToolExecutionResultMessage.from(r,
+                .map(r -> ToolExecutionResultMessage.from(r,
                         "Not executed: call it again after the user has answered your question."))
                 .toList();
     }
 
-    private List<ChatMessage> errorResults(List<ToolExecutionRequest> requests, String error) {
-        return requests.stream().<ChatMessage>map(r -> ToolExecutionResultMessage.from(r, error)).toList();
+    private List<ToolExecutionResultMessage> errorResults(List<ToolExecutionRequest> requests, String error) {
+        return requests.stream().map(r -> ToolExecutionResultMessage.from(r, error)).toList();
+    }
+
+    private static String names(List<ToolExecutionRequest> requests) {
+        return requests.stream().map(ToolExecutionRequest::name).collect(Collectors.joining(", "));
     }
 
     // ------------------------------------------------------------------ final answer
@@ -151,8 +234,9 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
             errors.addAll(checkDisplayReference(state, parsed.get()));
         }
         if (!errors.isEmpty()) {
+            String error = String.join("; ", errors);
             return failure(state, List.of(SystemMessage.from(
-                    "Your reply was rejected: " + String.join("; ", errors) + ". Send a corrected reply.")));
+                    "Your reply was rejected: " + error + ". Send a corrected reply.")), error);
         }
         return Map.of(
                 RunState.VALIDATION_OUTCOME, ValidationOutcome.FINAL_ANSWER,
@@ -208,8 +292,8 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
                     + new TreeSet<>(results.keySet()));
         }
         if (!ReplyEnvelopes.displayable(result.value())) {
-            return List.of(display.ref() + " (" + result.toolName() + ") cannot be shown to the user: only product "
-                    + "and order results can. Set finalReferenceToDisplay to null and write the key facts in text");
+            return List.of(display.ref() + " (" + result.toolName() + ") cannot be shown to the user. Set "
+                    + "finalReferenceToDisplay to null and write the key facts in text");
         }
         List<String> selected = display.selectedItemIdentifiers() == null ? List.of() : display.selectedItemIdentifiers();
         List<String> available = result.value().itemIdentifiers();
@@ -229,10 +313,17 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         return ai;
     }
 
-    /** RETRY with feedback while retries and model calls are left; otherwise FAILED with the fallback response. */
-    private Map<String, Object> failure(RunState state, List<ChatMessage> feedback) {
+    /**
+     * RETRY with feedback while retries and model calls are left; otherwise FAILED with the fallback response. A used
+     * up token budget does not end the run here: the next call is simply made with tools off.
+     */
+    private Map<String, Object> failure(RunState state, List<? extends ChatMessage> feedback, String reason) {
         int retries = state.validationRetries() + 1;
-        boolean canRetry = retries <= RunLimits.MAX_VALIDATION_RETRIES && !budgetExhausted(state);
+        boolean canRetry = retries <= RunLimits.MAX_VALIDATION_RETRIES
+                && state.modelCallCount() < RunLimits.MAX_MODEL_CALLS;
+        trace.step(state.context().runId(), TraceStep.of(StepType.VALIDATION, "rejected",
+                "attempt " + retries + " of " + (RunLimits.MAX_VALIDATION_RETRIES + 1)
+                        + (canRetry ? ", sent back to the model" : ", the run ends with the fallback reply"), reason));
         Map<String, Object> update = new HashMap<>();
         update.put(RunState.VALIDATION_OUTCOME, canRetry ? ValidationOutcome.RETRY : ValidationOutcome.FAILED);
         update.put(RunState.VALIDATION_RETRIES, retries);
@@ -240,10 +331,6 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         update.put(RunState.MESSAGES, feedback);
         if (!canRetry) update.put(RunState.RESPONSE, fallbackResponse());
         return update;
-    }
-
-    private boolean budgetExhausted(RunState state) {
-        return state.modelCallCount() >= RunLimits.MAX_MODEL_CALLS;
     }
 
     private AgentResponse fallbackResponse() {

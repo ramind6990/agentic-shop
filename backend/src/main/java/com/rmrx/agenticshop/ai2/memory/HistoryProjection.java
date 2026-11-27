@@ -48,6 +48,9 @@ final class HistoryProjection {
     }
 
     private static String replyText(ConversationMessage m) {
+        String status = m.reply() == null ? "" : m.reply().path("status").asString();
+        if ("FAILED".equals(status)) return "(I could not answer this message: an error occurred.)";
+        if ("STOPPED".equals(status)) return "(The customer stopped this request before I replied.)";
         JsonNode display = m.display();
         if (display == null || display.isNull()) return m.text();
         String selected = display.path("selectedItemIdentifiers").isEmpty() ? "all items"

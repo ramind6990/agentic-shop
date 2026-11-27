@@ -13,7 +13,9 @@ import { AnsweredBox } from '../../components/answered-box/answered-box';
 import { Composer } from '../../components/composer/composer';
 import { ConversationList } from '../../components/conversation-list/conversation-list';
 import { InteractionBox } from '../../components/interaction-box/interaction-box';
+import { ProgressLine } from '../../components/progress-line/progress-line';
 import { ReplyView } from '../../components/reply-view/reply-view';
+import { UsageBar } from '../../components/usage-bar/usage-bar';
 import { ChatSocket } from '../../data-access/chat-socket';
 import { ChatStore } from '../../state/chat.store';
 
@@ -24,7 +26,16 @@ import { ChatStore } from '../../state/chat.store';
  */
 @Component({
   selector: 'app-chat-page',
-  imports: [RouterLink, ConversationList, Composer, ReplyView, InteractionBox, AnsweredBox],
+  imports: [
+    RouterLink,
+    ConversationList,
+    Composer,
+    ReplyView,
+    InteractionBox,
+    AnsweredBox,
+    ProgressLine,
+    UsageBar,
+  ],
   providers: [ChatSocket, ChatStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './chat-page.html',
