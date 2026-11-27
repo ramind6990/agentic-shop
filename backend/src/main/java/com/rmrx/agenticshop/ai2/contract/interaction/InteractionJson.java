@@ -22,6 +22,11 @@ public final class InteractionJson {
         return MAPPER.writeValueAsString(value);
     }
 
+    /** A value as a JSON tree, serialized exactly as {@link #write} would. */
+    public static JsonNode toTree(Object value) {
+        return MAPPER.valueToTree(value);
+    }
+
     /** JSON text as a tree (null for null), e.g. to return a stored JSON column as an object. */
     public static JsonNode tree(String json) {
         return json == null ? null : MAPPER.readTree(json);

@@ -21,6 +21,13 @@
       "port": 8080
     },
     {
+      "name": "backend-guard-test",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
+        "-Dspring-boot.run.arguments=--app.ai2.dev-endpoints=true --app.ai2.guard.input.mode=SHADOW --app.ai2.guard.loop.max-tool-errors=1"],
+      "port": 8082
+    },
+    {
       "name": "backend-small-memory",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",

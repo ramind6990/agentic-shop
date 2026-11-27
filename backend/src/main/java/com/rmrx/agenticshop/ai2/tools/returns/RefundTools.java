@@ -77,8 +77,9 @@ public class RefundTools implements AgentToolSet {
     @Sensitive(approvalMessage = "Refund {amount} on order {orderNumber}?",
             detail = "The money goes back to the customer's original payment method. Reason: {reason}")
     @Tool(name = ISSUE_REFUND, value = "Refund money on an order to the customer's original payment method, e.g. for "
-            + "a received return or a lost parcel. The amount is limited by your role and by what is left to refund "
-            + "on the order; the system refuses anything beyond that. The user approves it before it runs.")
+            + "a received return or a lost parcel. The amount is limited by your role's refund limit and by what is "
+            + "left to refund on the order. For an amount above your own limit use request_refund_approval instead: "
+            + "a colleague with a higher limit approves it. The user approves it before it runs.")
     public RefundResponse issueRefund(
             @P("The order number") String orderNumber,
             @P("Amount to refund, in the order's currency") BigDecimal amount,

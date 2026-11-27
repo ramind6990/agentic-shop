@@ -47,7 +47,7 @@ public class SensitiveToolExecutionNode implements NodeActionWithConfig<RunState
     public Optional<InterruptionMetadata<RunState>> interrupt(String nodeId, RunState state, RunnableConfig config) {
         return nextPendingApproval(state).map(call -> InterruptionMetadata.builder(nodeId, state)
                 .reason(REASON)
-                .putMetadata(PendingInteraction.METADATA_KEY, toApprovalRequest(state.context(), call))
+                .putMetadata(PendingInteraction.METADATA_KEY, toApprovalRequest(state, call))
                 .build());
     }
 
@@ -80,11 +80,18 @@ public class SensitiveToolExecutionNode implements NodeActionWithConfig<RunState
                 .findFirst();
     }
 
-    /** Title and detail come from the tool's {@code @Sensitive} templates, rendered from the call's arguments. */
-    private PendingInteraction.ApprovalRequest toApprovalRequest(RunContext context, ToolExecutionRequest call) {
+    /**
+     * Title and detail come from the tool's {@code @Sensitive} templates, rendered from the call's arguments; the
+     * precheck's note (e.g. what is left to refund), if any, is added to the detail.
+     */
+    private PendingInteraction.ApprovalRequest toApprovalRequest(RunState state, ToolExecutionRequest call) {
+        RunContext context = state.context();
         String title = registry.catalog(context).approvalMessage(call)
                 .orElseThrow(() -> new IllegalStateException("not a sensitive tool: " + call.name()));
+        String detail = registry.catalog(context).approvalDetail(call).orElse(null);
+        String note = state.approvalNotes().get(call.id());
+        if (note != null) detail = detail == null || detail.isBlank() ? note : detail + "\n" + note;
         return new PendingInteraction.ApprovalRequest(PendingInteraction.idFor(context.runId(), call.id()), call.id(),
-                title, registry.catalog(context).approvalDetail(call).orElse(null));
+                title, detail);
     }
 }

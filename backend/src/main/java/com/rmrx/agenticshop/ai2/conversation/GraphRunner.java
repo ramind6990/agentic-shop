@@ -2,6 +2,7 @@ package com.rmrx.agenticshop.ai2.conversation;
 
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.graph.RunGraph;
+import com.rmrx.agenticshop.ai2.graph.guard.Guardrails;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
 import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
@@ -46,9 +47,10 @@ public class GraphRunner {
 
     public GraphRunner(ToolRegistry registry, ToolCallExecutor executor, JdbcCheckpointSaver checkpoints,
                        ModelGateway model, SystemPrompt systemPrompt, Ai2ReplyProperties reply, Ai2RunProperties run,
-                       HistoryProvider historyProvider, TraceRecorder trace) throws GraphStateException {
+                       HistoryProvider historyProvider, TraceRecorder trace, Guardrails guards)
+            throws GraphStateException {
         this.graph = new RunGraph(new RunGraph.Dependencies(checkpoints, registry, executor, model, systemPrompt,
-                reply, run, historyProvider, trace)).graph();
+                reply, run, historyProvider, trace, guards)).graph();
         this.checkpoints = checkpoints;
     }
 

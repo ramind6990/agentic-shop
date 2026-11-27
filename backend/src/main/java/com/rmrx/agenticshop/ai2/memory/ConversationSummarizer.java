@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai2.memory;
 import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessage;
 import com.rmrx.agenticshop.ai2.conversation.message.ConversationMessageStore;
 import com.rmrx.agenticshop.ai2.conversation.store.ConversationStore;
+import com.rmrx.agenticshop.ai2.graph.guard.pii.PiiRedactor;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.ai2.model.ModelCall;
 import com.rmrx.agenticshop.ai2.model.ModelGateway;
@@ -37,12 +38,14 @@ public class ConversationSummarizer {
     private final ConversationMemoryStore memories;
     private final ConversationStore conversations;
     private final Ai2MemoryProperties props;
+    private final PiiRedactor pii;
     private final String instructions;
 
     public ConversationSummarizer(ModelGateway model, ConversationMessageStore messages,
                                   ConversationMemoryStore memories, ConversationStore conversations,
-                                  Ai2MemoryProperties props) {
+                                  Ai2MemoryProperties props, PiiRedactor pii) {
         this.model = model;
+        this.pii = pii;
         this.messages = messages;
         this.memories = memories;
         this.conversations = conversations;
@@ -66,8 +69,10 @@ public class ConversationSummarizer {
             List<ConversationMessage> fold = unsummarized.subList(0, unsummarized.size() - props.keepRecent());
             String note = "fold " + fold.size() + " messages (ids " + fold.getFirst().id() + ".." + fold.getLast().id()
                     + ") into the summary";
-            String summary = summarize(ModelCall.summary(context, note),
-                    memory.map(ConversationMemory::summary).orElse(""), HistoryProjection.toTranscript(fold));
+            // PII guardrail: contact and payment data never goes into the summarizer, nor into the stored summary
+            String summary = pii.redact(summarize(ModelCall.summary(context, note),
+                    memory.map(ConversationMemory::summary).orElse(""),
+                    pii.redact(HistoryProjection.toTranscript(fold))));
             memories.save(conversationId, summary, fold.getLast().id());
             log.info("ai2: conversation {} summarized through message {} ({} chars)", conversationId,
                     fold.getLast().id(), summary.length());

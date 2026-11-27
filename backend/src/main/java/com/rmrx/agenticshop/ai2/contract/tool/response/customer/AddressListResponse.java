@@ -12,9 +12,10 @@ public record AddressListResponse(Long customerId, List<Address> addresses) impl
         addresses = List.copyOf(addresses);
     }
 
+    /** Addresses without recipient, street lines or postal code (the card shows them in full). */
     @Override
     public Object toAgentSummary() {
-        return this;
+        return new AddressListResponse(customerId, addresses.stream().map(Address::forAgent).toList());
     }
 
     @Override

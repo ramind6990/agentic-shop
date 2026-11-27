@@ -82,13 +82,15 @@ answered). A conversation has at most one active run at a time.
 ## 3. The graph
 
 ```
-START → modelCall → outputValidation ─┬─ RETRY ─────────► modelCall
-                                      ├─ FAILED ────────► END   (fallback reply)
-                                      ├─ FINAL_ANSWER ──► END
-                                      └─ TOOL_CALLS ────► toolExecution? → askUser | sensitiveToolExecution → modelCall
+START → inputGuard ─┬─ refused ─► END   (refusal)
+                    └─► modelCall → outputValidation ─┬─ RETRY ─────────► modelCall
+                                                      ├─ FAILED ────────► END   (fallback reply)
+                                                      ├─ FINAL_ANSWER ──► END
+                                                      └─ TOOL_CALLS ────► toolExecution? → askUser | sensitiveToolExecution → modelCall
 ```
 
-- **Only `outputValidation` ends a run.** Edges skip tool nodes that have nothing to do in the current step.
+- **A run ends after `inputGuard` (a refused message) or after `outputValidation`.** Edges skip tool nodes that have
+  nothing to do in the current step. The guardrails are described in section 15.
 - `askUser` and `sensitiveToolExecution` always go back to `modelCall`; their pauses happen inside the node.
 - Routing is in `RunRoutes.afterValidation` / `afterToolExecution`; they only read state written by validation.
 
@@ -96,6 +98,7 @@ START → modelCall → outputValidation ─┬─ RETRY ───────�
 
 | Node | What it does |
 |---|---|
+| `InputGuardNode` | The run's first node: the user's message through the input guardrail; a refused message ends the run (section 15). |
 | `ModelCallNode` | Builds the request: system prompt (rendered per call) + history + this run's messages + all tools + the `AgentResponse` JSON schema as response format, and sends it through `ModelGateway`. On the run's last allowed call, or once the run's tokens reach `app.ai2.run.max-tokens`, `toolChoice = NONE` and a "no more tools" note. |
 | `OutputValidationNode` | Validates the model's output and decides how the step ends (see below). |
 | `ToolExecutionNode` | Executes read-only tool calls; stores each successful result under a new ref. |
@@ -655,10 +658,11 @@ limits per tier; the hand-off scenario (section 5) from the customer's report to
 - Remove the REST send/answer endpoints now that the UI uses the WebSocket.
 - WebSocket hardening: a cap on open sockets per user, and a rate limit on chat frames.
 - Hand-off follow-ups: a staff reply/resolution posted into the customer's linked conversation (domain event → ai2
-  listener → "Support team" chat message, needs a frontend card); code-forced escalation (a "Talk to a person" button,
-  repeated tool failures, step budget used up); priority rules and response times per category.
-- Pre-approval check for sensitive tools: today `cancel_order` on a delivered order asks for approval first and only
-  then fails; check feasibility (and compute consequences for the approval detail) before pausing.
+  listener → "Support team" chat message, needs a frontend card); a "Talk to a person" button (starts a run with the
+  forced hand-off of section 15); priority rules and response times per category.
+- Guardrail follow-ups: a display card for refund approval results (they are "not shown" today); sentence-level
+  hiding of injected text (today the whole text is hidden); an eval/red-team set for the injection and audit guards
+  (false-positive rate in SHADOW before tightening); a precheck for `request_return` and `decide_return`.
 - Validation stubs: tool-argument checks, silent fixes.
 - Several app instances: run events and connect tokens live in one JVM (needs a shared bus behind `RunEventBus` and a
   shared connect-token store).
@@ -667,3 +671,36 @@ limits per tier; the hand-off scenario (section 5) from the customer's report to
   from checkpoints).
 - The approval text of a sensitive tool can only show its arguments (e.g. an address id, not the address).
 - Spring wiring of the nodes (they are built by `RunGraph` today).
+
+---
+
+## 15. Guardrails
+
+All guardrails live in `ai2/graph/guard` (one class per check). The nodes do not check anything themselves: they call
+the guards (through the `Guardrails` bean) and apply the decisions to the run state. Every decision is a `GUARD` step
+in the run's trace. Each guard has a mode in `app.ai2.guard.*`: `OFF`, `SHADOW` (trace only, to measure false
+positives) or `ENFORCE`. The real security boundary stays in code that the model cannot change: tools run as the
+caller (`AccessScope.runAs`), one tool catalog per audience, approvals before writes, and domain rules.
+
+| Guardrail | Where it runs | What it does |
+|---|---|---|
+| Input sanitizing | `ConversationService` → `UserInputGuard.sanitize` | Removes invisible characters (zero-width, bidi, Unicode tag block) and redacts card numbers / IBANs before the message is stored or reaches the model. |
+| Direct injection | `InputGuardNode` → `UserInputGuard.screenMessage` | `PatternInjectionDetector` (override, reveal-prompt, role change, chat markers); otherwise `InjectionClassifier` (guard model). An attack ends the run with a REFUSED reply; the agent's model is not called. |
+| Injection in typed answers | `AskUserNode` → `UserInputGuard.answerToolResult` | Same check for `ask_input` answers (a resumed run never passes the input guard again); the answer is withheld, the run goes on. |
+| Indirect injection + PII in tool data | `ToolCallExecutor` → `ToolOutputGuard` | Every `@FreeText` field of a result's agent summary (reviews, descriptions, ticket messages, reasons, notes) is sanitized, PII-redacted (`PiiRedactor`: email, phone, Luhn card, IBAN) and screened (patterns, classifier on SUSPECT, cached by hash). An injected text becomes `[hidden by the shop: …]`. The displayed result keeps the full data. |
+| PII minimization | the contracts' `toAgentSummary()` | Typed fields: addresses without recipient/street/postal code (`Address.forAgent`), masked email/phone (`PiiMask`). The summarizer (`summary-v2`) and the trace (`ToolCallTracker`) are redacted too. |
+| Pre-approval check | `OutputValidationNode` → `SensitivePrechecks` | Before the approval question, the domain's read-only checks (`RefundCommandService.check`, `RefundApprovalService.checkRequest/checkDecision`, `OrderCommandService.checkCancel/checkChangeAddress`, `TicketCommandService.checkOpen`) run as the caller. An impossible call gets an error result instead of an approval card; an allowed one may add a note to the approval detail (`RunState.APPROVAL_NOTES`). |
+| Tiered (four-eyes) refunds | domain `RefundApprovalService` + tools `request_refund_approval`, `search_refund_approvals`, `approve_refund_request`, `reject_refund_request` | A refund above the caller's limit (`RefundLimits`: T1 100, T2 1000, FINANCE/ADMIN unlimited) becomes a `refund_approval` request (RFA-0000001, Flyway V19). A colleague whose limit covers it approves (the refund is issued with them as issuer) or rejects; never the requester (also a DB check). Async on purpose: a paused run waits for its own user only. |
+| Loop detection | `OutputValidationNode` → `LoopDetector` | Blocks a tool that already failed twice, or a read tool called 5 times with other arguments. Escalates after 3 failed calls, 2 steps without any result, or a call to a tool it was told to stop calling. |
+| Code-forced hand-off | `OutputValidationNode` / `ModelCallNode` → `ForcedEscalation` | After an escalation (`RunState.ESCALATION`), a customer run's next call offers only `escalate_to_human` (required) with a note; the model writes the summary, the customer approves it, then the final reply runs without tools. Staff runs answer without tools. A failed hand-off is tried again; escalation has 3 extra model calls. |
+| Output: grounding, links, amounts | `OutputValidationNode` → `OutputGuard` | Order, ticket, approval and tracking numbers in the reply must appear in the evidence (`ReplyEvidence`: user facts, history, this run's messages); no links outside `allowed-link-hosts`; amounts in SHADOW. |
+| Output: reply audit | `OutputGuard` → `ReplyAuditor` | A guard model labels each claim of the reply (ACTION / PROMISE / FACT × SUPPORTED / UNSUPPORTED / CONTRADICTED) against the `ActionLedger` (real outcome of each sensitive call) and the evidence. Unsupported actions and promises, and contradicted facts, are sent back as validation feedback, at most once per round: on a retried reply the audit only traces, so a wrong finding cannot turn a done action into the fallback reply. |
+
+Scenarios verified through the real model (2026-11-27): direct injection refused by patterns and by the classifier
+without an agent call; planted review and ticket injections hidden, invisible tag characters stripped, contact data
+redacted, a benign "ignore the manual" review kept; masked customer profile for staff; denied cancellation reported
+honestly; forced hand-off after a failed lookup (precheck caught a wrong order number in the hand-off, ticket created
+after approval); T1 refund above limit → approval request with a precheck note → T2 approval issues the refund; T1
+cannot decide their own request, T2 cannot decide a Finance-level one. Launch config `backend-guard-test` runs with
+the input guard in SHADOW and a loop threshold of 1, to reproduce the hand-off. Test data: seed V114 (planted reviews
+on customer_1's delivered demo order product, an injected ticket on their shipped demo order).

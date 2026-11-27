@@ -25,4 +25,14 @@ public final class RefundLimits {
             default -> Optional.empty();
         };
     }
+
+    /** Whether the role may issue (or approve) a refund of this amount on its own. */
+    public static boolean covers(Role role, BigDecimal amount) {
+        return mayIssue(role) && capFor(role).map(cap -> amount.compareTo(cap) <= 0).orElse(true);
+    }
+
+    /** The lowest role whose limit covers the amount: who has to approve a refund above the requester's limit. */
+    public static Role approverFor(BigDecimal amount) {
+        return covers(Role.SUPPORT_T2, amount) ? Role.SUPPORT_T2 : Role.FINANCE;
+    }
 }

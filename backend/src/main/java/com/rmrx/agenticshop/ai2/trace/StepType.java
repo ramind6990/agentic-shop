@@ -10,6 +10,8 @@ public enum StepType {
     TOOL,
     /** A model output the validation rejected, or tool calls it dropped. */
     VALIDATION,
+    /** A guardrail decision: blocked input, hidden tool text, a precheck refusal, a reply audit, a forced hand-off. */
+    GUARD,
     /** The question or approval the run paused on. */
     INTERACTION,
     /** The reply the user got. */

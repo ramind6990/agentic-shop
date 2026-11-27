@@ -24,6 +24,14 @@ public record ModelCall(UsageScope scope, boolean retry, String note) {
         return new ModelCall(scope(context, UsageIssuer.SYSTEM, UsagePurpose.SUMMARY), false, note);
     }
 
+    /**
+     * A guardrail's check (injection classifier, reply auditor): system work, not retried (a failed check falls back to
+     * the deterministic checks, and the failure is traced).
+     */
+    public static ModelCall guard(RunContext context, String note) {
+        return new ModelCall(scope(context, UsageIssuer.SYSTEM, UsagePurpose.GUARD), false, note);
+    }
+
     private static UsageScope scope(RunContext context, UsageIssuer issuer, UsagePurpose purpose) {
         return new UsageScope(context.userId(), context.conversationId(), context.runId(), issuer, purpose);
     }

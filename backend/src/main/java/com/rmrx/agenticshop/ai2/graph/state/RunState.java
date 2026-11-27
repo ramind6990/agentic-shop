@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai2.graph.state;
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
 import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
+import com.rmrx.agenticshop.ai2.graph.guard.loop.Escalation;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -66,12 +67,22 @@ public class RunState extends AgentState {
      */
     public static final String TOOL_RESULTS = "toolResults";
 
+    /**
+     * Notes for the approval question of sensitive calls, by call id (e.g. what is left to refund); written by the
+     * validation node from the prechecks; merged.
+     */
+    public static final String APPROVAL_NOTES = "approvalNotes";
+
+    /** Set once the loop detector stopped the run ({@link Escalation}); written by the validation node. */
+    public static final String ESCALATION = "escalation";
+
     private static final String REF_PREFIX = "r";
 
     public static final Map<String, Channel<?>> SCHEMA = Map.of(
             MESSAGES, Channels.appenderWithDuplicate(ArrayList::new),
             HUMAN_ANSWERS, Channels.<Map<String, HumanAnswer>>base(RunState::merge, LinkedHashMap::new),
-            TOOL_RESULTS, Channels.<Map<String, ToolResult>>base(RunState::merge, LinkedHashMap::new));
+            TOOL_RESULTS, Channels.<Map<String, ToolResult>>base(RunState::merge, LinkedHashMap::new),
+            APPROVAL_NOTES, Channels.<Map<String, String>>base(RunState::merge, LinkedHashMap::new));
 
     private static <V> Map<String, V> merge(Map<String, V> current, Map<String, V> update) {
         Map<String, V> merged = new LinkedHashMap<>();
@@ -143,6 +154,14 @@ public class RunState extends AgentState {
 
     public Map<String, ToolResult> toolResults() {
         return this.<Map<String, ToolResult>>value(TOOL_RESULTS).orElseGet(Map::of);
+    }
+
+    public Map<String, String> approvalNotes() {
+        return this.<Map<String, String>>value(APPROVAL_NOTES).orElseGet(Map::of);
+    }
+
+    public Optional<Escalation> escalation() {
+        return value(ESCALATION);
     }
 
     /**

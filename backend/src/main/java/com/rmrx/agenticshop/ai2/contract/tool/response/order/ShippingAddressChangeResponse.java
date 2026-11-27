@@ -6,8 +6,9 @@ import com.rmrx.agenticshop.ai2.contract.tool.ToolResponse;
 /** The order's new delivery address. */
 public record ShippingAddressChangeResponse(String orderNumber, Address shippingAddress) implements ToolResponse {
 
+    /** The new address without recipient, street lines or postal code (the card shows it in full). */
     @Override
     public Object toAgentSummary() {
-        return this;
+        return new ShippingAddressChangeResponse(orderNumber, Address.agentView(shippingAddress));
     }
 }

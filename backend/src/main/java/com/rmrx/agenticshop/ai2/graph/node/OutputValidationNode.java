@@ -8,6 +8,10 @@ import com.rmrx.agenticshop.ai2.graph.agent.response.AgentResponse;
 import com.rmrx.agenticshop.ai2.graph.agent.response.DisplayReference;
 import com.rmrx.agenticshop.ai2.graph.agent.response.SuggestionReply;
 import com.rmrx.agenticshop.ai2.graph.agent.response.ResponseStatus;
+import com.rmrx.agenticshop.ai2.graph.guard.Guardrails;
+import com.rmrx.agenticshop.ai2.graph.guard.loop.Escalation;
+import com.rmrx.agenticshop.ai2.graph.guard.loop.LoopCheck;
+import com.rmrx.agenticshop.ai2.graph.guard.precheck.PrecheckOutcome;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
 import com.rmrx.agenticshop.ai2.graph.state.StepPlan;
 import com.rmrx.agenticshop.ai2.graph.state.ValidationOutcome;
@@ -39,6 +43,10 @@ import java.util.stream.Collectors;
  * Validates the model's output: either a batch of tool calls (mixing rules, duplicate calls, per-step cap) or the
  * final {@code AgentResponse}. Fixes what it can in code; otherwise sends a specific error back to the model.
  * <p>
+ * It applies the decisions of the guardrails ({@link Guardrails}) to the state: for tool calls the forced hand-off's
+ * limits, the loop detector (blocked calls, escalation) and the prechecks of sensitive calls (blocked calls, approval
+ * notes); for a final reply the forced hand-off and the output checks (grounding, links, reply audit).
+ * <p>
  * Writes {@link RunState#VALIDATION_OUTCOME}, {@link RunState#VALIDATION_RETRIES} and {@link RunState#STEP_PLAN} on
  * every pass (so the routes never read a value from an earlier step), and {@link RunState#RESPONSE} when the run ends.
  * Every rejected output and every dropped tool call is written to the run's trace (a VALIDATION step).
@@ -51,11 +59,14 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
     private final ToolRegistry registry;
     private final Ai2ReplyProperties reply;
     private final TraceRecorder trace;
+    private final Guardrails guards;
 
-    public OutputValidationNode(ToolRegistry registry, Ai2ReplyProperties reply, TraceRecorder trace) {
+    public OutputValidationNode(ToolRegistry registry, Ai2ReplyProperties reply, TraceRecorder trace,
+                                Guardrails guards) {
         this.reply = reply;
         this.registry = registry;
         this.trace = trace;
+        this.guards = guards;
     }
 
     @Override
@@ -76,6 +87,7 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         }
         ToolCatalog tools = registry.catalog(state.context());
         List<String> errors = checkToolCalls(tools, requests);
+        guards.escalation().toolCallViolation(state, requests).ifPresent(errors::add);
         if (!errors.isEmpty()) {
             String error = String.join("; ", errors);
             return failure(state, errorResults(requests, error), error);
@@ -84,8 +96,15 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         List<ToolExecutionResultMessage> results = new ArrayList<>(); // results for calls that will not run
         List<ToolExecutionRequest> kept = capStepCalls(requests, results);
         kept = dropDuplicateCalls(state, tools, kept, results);
+        LoopCheck loop = guards.loop().inspect(state, tools, kept);
+        if (loop.escalates()) return escalate(state, kept, results, loop.escalation());
+        kept = dropBlocked(kept, loop.blocked(), results);
         traceDropped(state, results);
         StepPlan plan = classifyToolCalls(tools, kept);
+        PrecheckOutcome prechecked = guards.prechecks().check(state.context(),
+                state.lastToolRequests(plan.sensitiveCallIds()));
+        plan = plan.withSensitiveCallIds(prechecked.allowedCallIds());
+        results.addAll(prechecked.blockedResults());
         results.addAll(deferredResults(plan, kept));
 
         Map<String, Object> update = new HashMap<>();
@@ -93,7 +112,42 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         update.put(RunState.VALIDATION_RETRIES, 0);
         update.put(RunState.STEP_PLAN, plan);
         if (!results.isEmpty()) update.put(RunState.MESSAGES, results);
+        if (!prechecked.notes().isEmpty()) update.put(RunState.APPROVAL_NOTES, prechecked.notes());
         return update;
+    }
+
+    /** Calls the loop detector blocked get its "stop" result instead of running. */
+    private static List<ToolExecutionRequest> dropBlocked(List<ToolExecutionRequest> requests,
+                                                          Map<String, String> blocked,
+                                                          List<ToolExecutionResultMessage> results) {
+        if (blocked.isEmpty()) return requests;
+        List<ToolExecutionRequest> kept = new ArrayList<>();
+        for (ToolExecutionRequest r : requests) {
+            if (blocked.containsKey(r.id())) {
+                results.add(ToolExecutionResultMessage.builder().id(r.id()).toolName(r.name())
+                        .text(blocked.get(r.id())).isError(false).build());
+            } else {
+                kept.add(r);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * The loop detector stopped the run: none of this step's calls runs, and the escalation is stored, so the next
+     * model call is the forced hand-off (or the final reply without tools).
+     */
+    private Map<String, Object> escalate(RunState state, List<ToolExecutionRequest> calls,
+                                         List<ToolExecutionResultMessage> results, Escalation escalation) {
+        guards.escalation().traceStart(state, escalation);
+        calls.forEach(c -> results.add(ToolExecutionResultMessage.from(c,
+                "Not executed: this request is going in circles (" + escalation.reason() + ").")));
+        return Map.of(
+                RunState.VALIDATION_OUTCOME, ValidationOutcome.TOOL_CALLS,
+                RunState.VALIDATION_RETRIES, 0,
+                RunState.STEP_PLAN, StepPlan.empty(),
+                RunState.MESSAGES, results,
+                RunState.ESCALATION, escalation);
     }
 
     /** Unknown tool names, arguments that do not parse against the tool's parameters. */
@@ -229,9 +283,12 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
         if (parsed.isEmpty()) {
             errors.add("The reply is not a valid AgentResponse JSON object.");
         } else {
+            guards.escalation().finalAnswerViolation(state).ifPresent(errors::add);
             errors.addAll(checkSchema(parsed.get()));
             errors.addAll(checkTextLength(parsed.get()));
             errors.addAll(checkDisplayReference(state, parsed.get()));
+            // output guardrails (grounding, links, reply audit) only for a reply that is otherwise valid
+            if (errors.isEmpty()) errors.addAll(guards.output().check(state, parsed.get()));
         }
         if (!errors.isEmpty()) {
             String error = String.join("; ", errors);
@@ -320,7 +377,7 @@ public class OutputValidationNode implements NodeActionWithConfig<RunState> {
     private Map<String, Object> failure(RunState state, List<? extends ChatMessage> feedback, String reason) {
         int retries = state.validationRetries() + 1;
         boolean canRetry = retries <= RunLimits.MAX_VALIDATION_RETRIES
-                && state.modelCallCount() < RunLimits.MAX_MODEL_CALLS;
+                && state.modelCallCount() < guards.escalation().modelCallLimit(state);
         trace.step(state.context().runId(), TraceStep.of(StepType.VALIDATION, "rejected",
                 "attempt " + retries + " of " + (RunLimits.MAX_VALIDATION_RETRIES + 1)
                         + (canRetry ? ", sent back to the model" : ", the run ends with the fallback reply"), reason));

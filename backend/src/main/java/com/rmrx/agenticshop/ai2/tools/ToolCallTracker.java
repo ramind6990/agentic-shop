@@ -2,6 +2,7 @@ package com.rmrx.agenticshop.ai2.tools;
 
 import com.rmrx.agenticshop.ai2.events.AgentEventPublisher;
 import com.rmrx.agenticshop.ai2.events.RunEvents;
+import com.rmrx.agenticshop.ai2.graph.guard.pii.PiiRedactor;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.ai2.trace.TraceRecorder;
 import com.rmrx.agenticshop.ai2.trace.TraceStep;
@@ -26,11 +27,13 @@ public class ToolCallTracker {
     private final ToolRegistry registry;
     private final RunEvents events;
     private final TraceRecorder trace;
+    private final PiiRedactor pii;
 
-    public ToolCallTracker(ToolRegistry registry, RunEvents events, TraceRecorder trace) {
+    public ToolCallTracker(ToolRegistry registry, RunEvents events, TraceRecorder trace, PiiRedactor pii) {
         this.registry = registry;
         this.events = events;
         this.trace = trace;
+        this.pii = pii;
     }
 
     public ExecutedCall track(ToolExecutionRequest call, RunContext context, Supplier<ExecutedCall> execution) {
@@ -41,8 +44,9 @@ public class ToolCallTracker {
         long durationMs = (System.nanoTime() - start) / 1_000_000;
         boolean success = executed.result() != null;
         publisher.ifPresent(p -> p.toolFinished(call.name(), success, durationMs));
-        trace.step(context.runId(), TraceStep.tool(call.name(), call.arguments(), executed.message().text(),
-                success ? null : TOOL_ERROR, durationMs));
+        // the trace is debug data, kept long: no contact or payment data in it
+        trace.step(context.runId(), TraceStep.tool(call.name(), pii.redact(call.arguments()),
+                pii.redact(executed.message().text()), success ? null : TOOL_ERROR, durationMs));
         return executed;
     }
 

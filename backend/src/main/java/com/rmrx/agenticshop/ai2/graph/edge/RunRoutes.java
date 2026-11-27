@@ -7,8 +7,9 @@ import com.rmrx.agenticshop.ai2.graph.state.StepPlan;
 import static org.bsc.langgraph4j.StateGraph.END;
 
 /**
- * The conditional edges of the run graph. Only the validation and tool execution nodes have a choice: ask-user and
- * sensitive tool execution always return to the model call (their pauses happen inside the node, not on an edge).
+ * The conditional edges of the run graph. Only the input guard, validation and tool execution nodes have a choice:
+ * ask-user and sensitive tool execution always return to the model call (their pauses happen inside the node, not on
+ * an edge). A run ends after the input guard (a refused message) or after validation.
  * Routes only read state; they never decide anything the validation node has not already written.
  */
 public final class RunRoutes {
@@ -16,7 +17,12 @@ public final class RunRoutes {
     private RunRoutes() {
     }
 
-    /** After validation: retry, end, or the first tool node this step needs. Only this route ends the run. */
+    /** After the input guard: a refused message ends the run; anything else goes to the model. */
+    public static String afterInputGuard(RunState state) {
+        return state.response().isPresent() ? END : RunGraph.MODEL_CALL;
+    }
+
+    /** After validation: retry, end, or the first tool node this step needs. */
     public static String afterValidation(RunState state) {
         return switch (state.validationOutcome()) {
             case RETRY -> RunGraph.MODEL_CALL;

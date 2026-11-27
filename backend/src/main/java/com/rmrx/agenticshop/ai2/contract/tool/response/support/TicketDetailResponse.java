@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.ai2.contract.tool.response.support;
 
+import com.rmrx.agenticshop.ai2.contract.tool.FreeText;
 import com.rmrx.agenticshop.ai2.contract.domain.TicketAuthor;
 import com.rmrx.agenticshop.ai2.contract.tool.Texts;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResponse;
@@ -15,7 +16,8 @@ import java.util.List;
 public record TicketDetailResponse(TicketItem ticket, long messageCount, List<Message> messages)
         implements ToolResponse {
 
-    public record Message(TicketAuthor author, String authorName, String body, boolean internal, Instant createdAt)
+    public record Message(TicketAuthor author, String authorName, @FreeText String body, boolean internal,
+                          Instant createdAt)
             implements Serializable {
 
         Message shortened() {

@@ -27,6 +27,12 @@ public record StepPlan(List<String> readCallIds, List<String> askCallIds, List<S
         return new StepPlan(List.of(), List.of(), List.of(), List.of());
     }
 
+    /** The same plan with only these sensitive calls left (the others were blocked by their precheck). */
+    public StepPlan withSensitiveCallIds(List<String> allowed) {
+        return new StepPlan(readCallIds, askCallIds, sensitiveCallIds.stream().filter(allowed::contains).toList(),
+                deferredCallIds);
+    }
+
     public boolean hasReadCalls() {
         return !readCallIds.isEmpty();
     }

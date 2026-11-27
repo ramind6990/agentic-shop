@@ -1,6 +1,8 @@
 package com.rmrx.agenticshop.app.returns.dto;
 
 import com.rmrx.agenticshop.app.common.dto.Ref;
+import com.rmrx.agenticshop.app.identity.entity.Role;
+import com.rmrx.agenticshop.app.returns.entity.RefundApprovalStatus;
 import com.rmrx.agenticshop.app.returns.entity.RefundStatus;
 import com.rmrx.agenticshop.app.returns.entity.ReturnReason;
 import com.rmrx.agenticshop.app.returns.entity.ReturnStatus;
@@ -23,5 +25,13 @@ public final class ReturnDtos {
 
     public record RefundDto(Long id, OrderRef order, Long returnRequestId, BigDecimal amount, String reason,
                             RefundStatus status, Ref issuedBy, Instant createdAt) {
+    }
+
+    /** A refund above the requester's limit and the colleague's decision on it. */
+    public record RefundApprovalDto(Long id, String approvalNumber, OrderRef order, String currency,
+                                    Long returnRequestId, BigDecimal amount, String reason,
+                                    RefundApprovalStatus status, Role approverRole, Ref requestedBy,
+                                    Instant requestedAt, Ref decidedBy, Instant decidedAt, String decisionNote,
+                                    Long refundId, String ticketNumber) {
     }
 }

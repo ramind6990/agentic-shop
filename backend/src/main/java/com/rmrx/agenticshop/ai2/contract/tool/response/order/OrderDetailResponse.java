@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.ai2.contract.tool.response.order;
 
+import com.rmrx.agenticshop.ai2.contract.tool.FreeText;
 import com.rmrx.agenticshop.ai2.contract.domain.Address;
 import com.rmrx.agenticshop.ai2.contract.domain.Carrier;
 import com.rmrx.agenticshop.ai2.contract.domain.PaymentMethod;
@@ -37,7 +38,7 @@ public record OrderDetailResponse(OrderItem card, Long customerId, String custom
                          Instant openedAt) implements Serializable {
     }
 
-    public record Refund(Long id, BigDecimal amount, RefundStatus status, String reason, Instant createdAt)
+    public record Refund(Long id, BigDecimal amount, RefundStatus status, @FreeText String reason, Instant createdAt)
             implements Serializable {
     }
 
@@ -65,7 +66,7 @@ public record OrderDetailResponse(OrderItem card, Long customerId, String custom
         return new Summary(card.orderNumber(), card.placedAt(), card.status().name(), card.seller(), customerId,
                 card.total(), card.currency(), card.lines().stream()
                 .map(l -> new Line(l.itemId(), l.productId(), l.title(), l.quantity(), l.unitPrice())).toList(),
-                shippingAddress, payments, shipments, returns, refunds, actions);
+                Address.agentView(shippingAddress), payments, shipments, returns, refunds, actions);
     }
 
     @Override

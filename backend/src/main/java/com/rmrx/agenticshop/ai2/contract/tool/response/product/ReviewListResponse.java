@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.ai2.contract.tool.response.product;
 
+import com.rmrx.agenticshop.ai2.contract.tool.FreeText;
 import com.rmrx.agenticshop.ai2.contract.tool.PageInfo;
 import com.rmrx.agenticshop.ai2.contract.tool.Texts;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResponse;
@@ -15,7 +16,7 @@ public record ReviewListResponse(Long productId, List<Review> items, PageInfo pa
         items = List.copyOf(items);
     }
 
-    public record Review(Long id, int rating, String title, String body, String authorName,
+    public record Review(Long id, int rating, @FreeText String title, @FreeText String body, String authorName,
                          boolean verifiedPurchase, int helpfulCount, Instant createdAt) implements Serializable {
 
         Review shortened() {

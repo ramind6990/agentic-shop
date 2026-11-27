@@ -7,6 +7,7 @@ import com.rmrx.agenticshop.ai2.tools.ask.AskYesNoArgs;
 import com.rmrx.agenticshop.ai2.contract.interaction.HumanAnswer;
 import com.rmrx.agenticshop.ai2.contract.interaction.InteractionJson;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
+import com.rmrx.agenticshop.ai2.graph.guard.injection.UserInputGuard;
 import com.rmrx.agenticshop.ai2.graph.state.RunState;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.ChatMessage;
@@ -32,6 +33,12 @@ import java.util.UUID;
 public class AskUserNode implements NodeActionWithConfig<RunState>, InterruptibleAction<RunState> {
 
     public static final String REASON = "ASK_USER";
+
+    private final UserInputGuard inputGuard;
+
+    public AskUserNode(UserInputGuard inputGuard) {
+        this.inputGuard = inputGuard;
+    }
 
     @Override
     public Optional<InterruptionMetadata<RunState>> interrupt(String nodeId, RunState state, RunnableConfig config) {
@@ -71,11 +78,15 @@ public class AskUserNode implements NodeActionWithConfig<RunState>, Interruptibl
         };
     }
 
-    /** One tool result per ask call of this step, holding the user's answer. */
+    /**
+     * One tool result per ask call of this step, holding the user's answer as the input guardrail lets it through (a
+     * typed answer that looks like a prompt injection is withheld).
+     */
     private List<ChatMessage> answersAsToolResults(RunState state) {
         Map<String, HumanAnswer> answers = state.humanAnswers();
         return state.lastToolRequests(state.stepPlan().askCallIds()).stream()
-                .<ChatMessage>map(call -> ToolExecutionResultMessage.from(call, answers.get(call.id()).toToolResult()))
+                .<ChatMessage>map(call -> ToolExecutionResultMessage.from(call,
+                        inputGuard.answerToolResult(state.context(), answers.get(call.id()))))
                 .toList();
     }
 }

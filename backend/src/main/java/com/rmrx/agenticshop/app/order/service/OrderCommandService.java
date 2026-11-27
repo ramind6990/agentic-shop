@@ -6,6 +6,7 @@ import com.rmrx.agenticshop.app.identity.entity.Address;
 import com.rmrx.agenticshop.app.identity.repository.AddressRepository;
 import com.rmrx.agenticshop.app.order.dto.OrderDtos.AddressDto;
 import com.rmrx.agenticshop.app.order.dto.OrderDtos.OrderCancellation;
+import com.rmrx.agenticshop.app.order.dto.OrderDtos.Verdict;
 import com.rmrx.agenticshop.app.order.entity.CustomerOrder;
 import com.rmrx.agenticshop.app.order.entity.OrderItem;
 import com.rmrx.agenticshop.app.order.entity.Payment;
@@ -87,6 +88,25 @@ public class OrderCommandService {
                 .orElseThrow(() -> new NotFoundException("Saved address of the order's customer", addressId));
         order.shipTo(ShippingAddress.of(saved));
         return mapper.toAddress(order.getShippingAddress());
+    }
+
+    /** Whether {@link #cancel} would be allowed now, without changing anything. */
+    @Transactional(readOnly = true)
+    public Verdict checkCancel(String orderNumber) {
+        return rules.cancel(facts.load(lookup.require(orderNumber)));
+    }
+
+    /** Whether {@link #changeShippingAddress} would be allowed now, without changing anything. */
+    @Transactional(readOnly = true)
+    public Verdict checkChangeAddress(String orderNumber, Long addressId) {
+        CustomerOrder order = lookup.require(orderNumber);
+        Verdict verdict = rules.changeAddress(facts.load(order));
+        if (!verdict.allowed()) return verdict;
+        boolean ownAddress = addressId != null && addresses.findById(addressId)
+                .filter(a -> Objects.equals(a.getUser().getId(), order.getCustomer().getId()))
+                .isPresent();
+        return ownAddress ? verdict : Verdict.no("Address " + addressId + " is not a saved address of the order's "
+                + "customer; use an id from get_addresses.");
     }
 
     private void releaseStock(OrderItem item) {

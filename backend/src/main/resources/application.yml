@@ -137,7 +137,7 @@ app:
       max-tokens: ${AI2_RUN_MAX_TOKENS:200000}
     # system prompt: prompts/ai2/<version>/base.md + customer.md / staff.md (or prompts/ai2/system-<version>.md)
     prompt:
-      version: ${AI2_PROMPT_VERSION:v3}
+      version: ${AI2_PROMPT_VERSION:v4}
     # limits of the final reply: told to the model in the prompt and enforced by the output validation
     reply:
       max-text-length: 600
@@ -150,7 +150,37 @@ app:
       max-summary-chars: 3000
       # a summary longer than this closes the conversation (new messages: "start a new one")
       hard-limit-chars: ${AI2_SUMMARY_HARD_LIMIT:6000}
-      prompt-version: v1
+      prompt-version: v2
+    # guardrails; each mode is OFF | SHADOW (trace only) | ENFORCE
+    guard:
+      # model of the guards' own calls (injection classifier, reply auditor); unset = the agent's model
+      model-name: ${AI2_GUARD_MODEL:gpt-6-luna}
+      # the user's message and typed answers: direct prompt injection
+      input:
+        mode: ENFORCE
+        classifier: true
+      # @FreeText fields of tool results (reviews, ticket messages, ...): indirect injection, PII
+      tool-output:
+        injection: ENFORCE
+        classifier: true
+        redact-pii: true
+        cache-size: 1000
+      # the final reply
+      output:
+        grounding: ENFORCE
+        amounts: SHADOW
+        links: ENFORCE
+        auditor: ENFORCE
+        # hosts a reply may link to; empty = no links
+        allowed-link-hosts: []
+        evidence-chars: 12000
+      # loop detection; an escalated customer run is handed over to support (escalate_to_human, approved by them)
+      loop:
+        enabled: true
+        max-failures-per-tool: 2
+        max-tool-errors: 3
+        max-calls-per-read-tool: 5
+        max-idle-steps: 2
     # what the chat's usage bar measures against, in tokens (shown as percentages; nothing is blocked)
     usage:
       # one conversation's model calls over its lifetime

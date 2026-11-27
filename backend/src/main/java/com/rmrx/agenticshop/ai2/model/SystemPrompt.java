@@ -79,11 +79,18 @@ public class SystemPrompt {
         return prompt.toString();
     }
 
-    private static String userFacts(RunContext context) {
+    /** Who the user is (role, refund limits): part of every system prompt, and evidence for the reply audit. */
+    public static String userFacts(RunContext context) {
         if (context.audience().orElse(Audience.CUSTOMER) == Audience.CUSTOMER) return "A signed-in customer.";
-        String limit = RefundLimits.capFor(context.role()).map(cap -> "at most " + cap + " per refund")
-                .orElse("not limited by role");
-        return "A support agent with role " + context.role() + "; refunds they issue are " + limit + ".";
+        if (!RefundLimits.mayIssue(context.role())) {
+            return "A support agent with role " + context.role() + "; they cannot issue or approve refunds.";
+        }
+        return RefundLimits.capFor(context.role())
+                .map(cap -> "A support agent with role " + context.role() + ". Their refund limit is " + cap
+                        + " per refund: they may issue refunds up to " + cap + " themselves, and approve colleagues' "
+                        + "refund requests up to " + cap + ". A larger refund needs request_refund_approval.")
+                .orElse("A support agent with role " + context.role() + ". Their refunds are not limited by role, "
+                        + "and they may approve colleagues' refund requests of any amount.");
     }
 
     private String compose(Audience audience, Map<String, Object> values) {

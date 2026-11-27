@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.app.support.service;
 
+import com.rmrx.agenticshop.app.common.exception.NotFoundException;
 import com.rmrx.agenticshop.app.common.exception.RuleViolationException;
 import com.rmrx.agenticshop.app.identity.entity.AppUser;
 import com.rmrx.agenticshop.app.identity.entity.Role;
@@ -71,6 +72,23 @@ public class TicketCommandService {
         }
         post(ticket, null, AuthorType.AI, summary, false, now);
         return new TicketOpening(queries.get(ticket.getTicketNumber()), open.isPresent());
+    }
+
+    /**
+     * Why {@link #open} would refuse this hand-off now, without changing anything: the caller is not a customer, or
+     * the order does not exist for them. Empty when it would be accepted.
+     */
+    @Transactional(readOnly = true)
+    public Optional<String> checkOpen(String orderNumber) {
+        if (scope.current().role() != Role.CUSTOMER) return Optional.of("Only customers open hand-off tickets.");
+        if (orderNumber == null || orderNumber.isBlank()) return Optional.empty();
+        try {
+            orders.require(orderNumber);
+            return Optional.empty();
+        } catch (NotFoundException e) {
+            return Optional.of("Order " + orderNumber + " does not exist for this customer: leave orderNumber out, or "
+                    + "use an order number from a tool result.");
+        }
     }
 
     /** Assigns the ticket to the calling staff member. */

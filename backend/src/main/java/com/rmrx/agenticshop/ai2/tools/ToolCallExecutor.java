@@ -1,9 +1,9 @@
 package com.rmrx.agenticshop.ai2.tools;
 
-import com.rmrx.agenticshop.ai2.contract.interaction.InteractionJson;
 import com.rmrx.agenticshop.ai2.contract.reply.ReplyEnvelopes;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResponse;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResult;
+import com.rmrx.agenticshop.ai2.graph.guard.tooloutput.ToolOutputGuard;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.app.security.AccessScope;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -26,7 +26,8 @@ import java.util.Optional;
  * can react to; the error text is the reason the shop gave (e.g. a broken rule).
  * <p>
  * A successful call gets the given ref. The model sees the ref on the first line of the result ({@code ref: r2}), so it
- * can name the result to display, followed by the JSON of the response's {@link ToolResponse#toAgentSummary()}. The
+ * can name the result to display, followed by the JSON of the response's {@link ToolResponse#toAgentSummary()} as the
+ * {@link ToolOutputGuard} lets it through (free texts screened for injected instructions and contact data). The
  * returned {@link ToolResult} holds the full return value; the calling node stores it in the state. Tool methods can
  * read {@link #CALL_KEY} (unique per call, stable across retries of the run) and {@link #CONVERSATION_ID} (null
  * outside a conversation) from an {@code InvocationParameters} parameter, e.g. as an idempotency key.
@@ -45,11 +46,14 @@ public class ToolCallExecutor {
     private final ToolRegistry registry;
     private final ToolCallTracker tracker;
     private final AccessScope scope;
+    private final ToolOutputGuard outputGuard;
 
-    public ToolCallExecutor(ToolRegistry registry, ToolCallTracker tracker, AccessScope scope) {
+    public ToolCallExecutor(ToolRegistry registry, ToolCallTracker tracker, AccessScope scope,
+                            ToolOutputGuard outputGuard) {
         this.registry = registry;
         this.tracker = tracker;
         this.scope = scope;
+        this.outputGuard = outputGuard;
     }
 
     public ExecutedCall execute(ToolExecutionRequest call, RunContext context, String ref) {
@@ -75,7 +79,7 @@ public class ToolCallExecutor {
             // the registry only accepts executable tools returning a ToolResponse; null is the one way to get here
             return error(call, "The tool returned no result.");
         }
-        return success(call, ref, value);
+        return success(call, context, ref, value);
     }
 
     private static InvocationContext invocation(ToolExecutionRequest call, RunContext context) {
@@ -94,10 +98,10 @@ public class ToolCallExecutor {
         return InvocationParameters.from(values);
     }
 
-    private static ExecutedCall success(ToolExecutionRequest call, String ref, ToolResponse value) {
+    private ExecutedCall success(ToolExecutionRequest call, RunContext context, String ref, ToolResponse value) {
         String summary;
         try {
-            summary = InteractionJson.write(value.toAgentSummary());
+            summary = outputGuard.agentSummary(value, call.name(), context);
         } catch (Exception e) {
             return error(call, "The tool result could not be summarized: " + e.getMessage());
         }

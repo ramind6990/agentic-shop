@@ -1,5 +1,6 @@
 package com.rmrx.agenticshop.ai2.contract.tool.response.product;
 
+import com.rmrx.agenticshop.ai2.contract.tool.FreeText;
 import com.rmrx.agenticshop.ai2.contract.tool.ToolResponse;
 import com.rmrx.agenticshop.ai2.contract.tool.Texts;
 
@@ -15,7 +16,8 @@ import java.util.Map;
  * @param categoryPath      category names from the root down
  * @param ratingDistribution stars → number of reviews
  */
-public record ProductDetailResponse(ProductItem card, String description, String seller, List<String> categoryPath,
+public record ProductDetailResponse(ProductItem card, @FreeText String description, String seller,
+                                    List<String> categoryPath,
                                     List<Attribute> attributes, boolean delisted, int availableUnits,
                                     LocalDate restockEta, Map<Integer, Long> ratingDistribution)
         implements ToolResponse {
@@ -23,7 +25,8 @@ public record ProductDetailResponse(ProductItem card, String description, String
     public record Attribute(String name, String value) implements Serializable {
     }
 
-    public record Summary(ProductItem.Summary product, String description, String seller, List<String> categoryPath,
+    public record Summary(ProductItem.Summary product, @FreeText String description, String seller,
+                          List<String> categoryPath,
                           List<Attribute> attributes, boolean delisted, LocalDate restockEta,
                           Map<Integer, Long> ratingDistribution) implements Serializable {
     }

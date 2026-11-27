@@ -11,6 +11,7 @@ import com.rmrx.agenticshop.ai2.conversation.store.ConversationStore;
 import com.rmrx.agenticshop.ai2.conversation.store.ConversationSummary;
 import com.rmrx.agenticshop.ai2.events.ChatResponse;
 import com.rmrx.agenticshop.ai2.graph.agent.pending.PendingInteraction;
+import com.rmrx.agenticshop.ai2.graph.guard.injection.UserInputGuard;
 import com.rmrx.agenticshop.ai2.graph.state.RunContext;
 import com.rmrx.agenticshop.app.common.exception.NotFoundException;
 import com.rmrx.agenticshop.app.security.CurrentUser;
@@ -28,6 +29,9 @@ import java.util.UUID;
  * <li>while it is PAUSED, only a matching, acceptable answer resumes it; any other input abandons it — a new
  *     message then starts a new run, a non-matching answer does not.</li>
  * </ul>
+ * The user's text is sanitized before anything else ({@link UserInputGuard#sanitize}: invisible characters removed,
+ * card numbers and IBANs redacted), so neither the timeline nor the model ever holds the raw form.
+ * <p>
  * Everything the user sees is stored as chat messages ({@link ConversationMessageStore}): the user's message, each
  * question or approval (PENDING until answered or abandoned) and the final reply. Runs execute in the background
  * ({@link RunLauncher}); the client follows them through their run events.
@@ -41,10 +45,12 @@ public class ConversationService {
     private final GraphRunner runner;
     private final RunLauncher launcher;
     private final RunRecorder recorder;
+    private final UserInputGuard inputGuard;
 
     public ConversationService(ConversationStore conversations, ConversationMessageStore messages,
                                ActiveRunRegistry activeRuns, GraphRunner runner, RunLauncher launcher,
-                               RunRecorder recorder) {
+                               RunRecorder recorder, UserInputGuard inputGuard) {
+        this.inputGuard = inputGuard;
         this.conversations = conversations;
         this.messages = messages;
         this.activeRuns = activeRuns;
@@ -57,8 +63,9 @@ public class ConversationService {
      * A new message: starts a run (abandoning a paused one first). Without a conversation id, a new conversation is
      * created for it.
      */
-    public RunOutcome sendMessage(CurrentUser user, Long conversationId, String text, String requestId) {
+    public RunOutcome sendMessage(CurrentUser user, Long conversationId, String rawText, String requestId) {
         Long userId = user.id();
+        String text = inputGuard.sanitize(rawText);
         Conversation conversation = conversationId == null ? conversations.create(userId) : owned(conversationId, userId);
         if (conversation.status() == Conversation.Status.CLOSED) {
             throw new ConversationConflictException("This conversation is full; please start a new one.");
@@ -82,9 +89,10 @@ public class ConversationService {
      * The answer to the pending question or approval: resumes the run when it matches; otherwise abandons the run
      * and starts nothing.
      */
-    public RunOutcome answer(Long userId, Long conversationId, UUID interactionId, HumanAnswer answer,
+    public RunOutcome answer(Long userId, Long conversationId, UUID interactionId, HumanAnswer rawAnswer,
                              String requestId) {
         owned(conversationId, userId);
+        HumanAnswer answer = inputGuard.sanitize(rawAnswer);
         ActiveRun current = activeRuns.find(conversationId)
                 .orElseThrow(() -> new ConversationConflictException("There is no question to answer."));
         if (current.status() == ActiveRun.Status.RUNNING) {
