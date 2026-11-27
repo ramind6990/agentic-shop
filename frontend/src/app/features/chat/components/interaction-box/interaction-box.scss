@@ -1,0 +1,220 @@
+@import 'abstracts';
+
+// The assistant's question, as a card about a third of the chat column wide (full width on phones).
+:host {
+  display: block;
+}
+
+.ask {
+  width: max(33%, 18rem);
+  max-width: 100%;
+  overflow: hidden;
+  background: $app-surface;
+  border: 1px solid $app-border-color;
+  border-radius: 0.75rem;
+  box-shadow: 0 4px 18px rgb(0 0 0 / 0.06);
+}
+
+// ---------- header: the question, in the accent tint
+
+.ask-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  font-weight: $font-weight-semibold;
+  line-height: 1.35;
+  color: var(--bs-primary-text-emphasis);
+  background: var(--bs-primary-bg-subtle);
+  border-bottom: 1px solid var(--bs-primary-border-subtle);
+
+  .approval & {
+    color: var(--bs-warning-text-emphasis);
+    background: var(--bs-warning-bg-subtle);
+    border-bottom-color: var(--bs-warning-border-subtle);
+  }
+}
+
+.ask-icon {
+  flex-shrink: 0;
+  width: 1.1rem;
+  height: 1.1rem;
+  margin-top: 0.05rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  .dot {
+    fill: currentColor;
+    stroke: none;
+  }
+}
+
+.ask-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+// ---------- body
+
+.ask-body {
+  padding: 0.6rem;
+}
+
+.detail {
+  padding: 0.7rem 0.85rem;
+  font-size: $font-size-sm;
+  color: $text-muted;
+  white-space: pre-line;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: $text-muted;
+}
+
+// Options: a ring (one answer) or a box (several) on the left, the label and its description on the right.
+.opts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0;
+  border: 0;
+  min-width: 0;
+
+  > .hint {
+    padding: 0 0.5rem 0.2rem;
+  }
+}
+
+.opt {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+
+  &:hover {
+    background: var(--bs-tertiary-bg);
+  }
+
+  &.checked {
+    background: rgba(var(--bs-primary-rgb), 0.07);
+  }
+
+  &:has(.opt-input:focus-visible) {
+    outline: 2px solid rgba(var(--bs-primary-rgb), 0.55);
+    outline-offset: -2px;
+  }
+
+  .opts:disabled & {
+    cursor: default;
+    opacity: 0.6;
+
+    &:hover {
+      background: transparent;
+    }
+  }
+}
+
+// The real radio / checkbox stays in the page for keyboard and screen readers; the ring or box is drawn instead.
+.opt-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mark {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-top: 0.1rem;
+  color: #fff;
+  background: $app-surface;
+  border: 1.5px solid $gray-400;
+  border-radius: 50%;
+  transition:
+    border-color 0.12s ease,
+    background-color 0.12s ease;
+
+  &.square {
+    border-radius: 0.3rem;
+  }
+
+  svg {
+    width: 0.8rem;
+    height: 0.8rem;
+    opacity: 0;
+  }
+
+  .opt:hover & {
+    border-color: $gray-500;
+  }
+
+  .checked & {
+    border-color: var(--bs-primary);
+
+    // one answer: a dot in the ring
+    &:not(.square)::after {
+      content: '';
+      width: 0.55rem;
+      height: 0.55rem;
+      border-radius: 50%;
+      background: var(--bs-primary);
+    }
+
+    // several: a filled box with a tick
+    &.square {
+      background: var(--bs-primary);
+
+      svg {
+        opacity: 1;
+      }
+    }
+  }
+}
+
+.opt-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.opt-label {
+  font-weight: $font-weight-medium;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.opt-desc {
+  font-size: 0.8125rem;
+  color: $text-muted;
+  overflow-wrap: anywhere;
+}
+
+// ---------- footer: Dismiss on the left, the answer buttons on the right
+
+.ask-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bs-tertiary-bg);
+  border-top: 1px solid $app-border-color;
+
+  .btn-link {
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+  }
+}

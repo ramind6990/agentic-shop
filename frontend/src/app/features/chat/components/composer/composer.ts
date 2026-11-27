@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  input,
+  output,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 
@@ -12,14 +20,16 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <form class="composer" (submit)="submit($event)">
-      <label class="visually-hidden" for="chat-input">Message</label>
+      <label class="visually-hidden" [for]="inputId()">{{ label() }}</label>
       <textarea
-        id="chat-input"
+        #field
+        [id]="inputId()"
         class="form-control border-0 shadow-none"
-        rows="2"
+        rows="1"
         maxlength="4000"
         [formControl]="text"
         [placeholder]="placeholder()"
+        (input)="fit()"
         (keydown.enter)="onEnter($event)"
       ></textarea>
       @if (busy()) {
@@ -53,18 +63,21 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
   styles: `
     .composer {
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       gap: 0.5rem;
-      padding: 0.5rem 0.5rem 0.5rem 0.25rem;
+      padding: 0.3rem 0.3rem 0.3rem 0.25rem;
       background: var(--bs-body-bg);
       border: 1px solid var(--bs-border-color);
       border-radius: 1rem;
       box-shadow: 0 1px 4px rgb(0 0 0 / 0.06);
     }
 
+    /* one line to start; fit() grows it with the text up to max-height, then it scrolls */
     textarea {
       resize: none;
       max-height: 10rem;
+      overflow-y: hidden;
+      background: transparent;
     }
 
     .round-btn {
@@ -86,12 +99,25 @@ export class Composer {
   readonly busy = input(false);
   readonly canStop = input(false);
   readonly placeholder = input('Ask about products or your orders…');
+  /** The field's id and accessible name: unique per page (a question's answer field reuses this component). */
+  readonly inputId = input('chat-input');
+  readonly label = input('Message');
   readonly send = output<string>();
   readonly stop = output<void>();
 
   protected readonly text = new FormControl('', { nonNullable: true });
   private readonly value = toSignal(this.text.valueChanges, { initialValue: '' });
   protected readonly sendable = computed(() => this.canSend() && this.value().trim().length > 0);
+
+  private readonly field = viewChild.required<ElementRef<HTMLTextAreaElement>>('field');
+
+  /** Sizes the field to its text: one line when empty, up to its max-height (then it scrolls). */
+  protected fit(): void {
+    const el = this.field().nativeElement;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+    el.style.overflowY = el.scrollHeight > el.clientHeight ? 'auto' : 'hidden';
+  }
 
   protected onEnter(event: Event): void {
     if ((event as KeyboardEvent).shiftKey) return;
@@ -103,5 +129,6 @@ export class Composer {
     if (!this.sendable()) return;
     this.send.emit(this.text.value);
     this.text.setValue('');
+    this.fit();
   }
 }

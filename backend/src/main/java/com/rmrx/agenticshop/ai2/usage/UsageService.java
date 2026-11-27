@@ -2,6 +2,7 @@ package com.rmrx.agenticshop.ai2.usage;
 
 import com.rmrx.agenticshop.ai2.conversation.store.ConversationStore;
 import com.rmrx.agenticshop.ai2.memory.HistoryProvider;
+import com.rmrx.agenticshop.ai2.usage.HistoryTokenCounter.HistoryTokens;
 import com.rmrx.agenticshop.ai2.usage.UsageViews.ContextUsage;
 import com.rmrx.agenticshop.ai2.usage.UsageViews.ConversationUsage;
 import com.rmrx.agenticshop.ai2.usage.UsageViews.UserUsage;
@@ -13,7 +14,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Map;
-import java.util.Optional;
 
 /** The read side of the token ledger: a user's usage, a conversation's usage and its context. */
 @Service
@@ -22,11 +22,16 @@ public class UsageService {
     private final UsageQueries queries;
     private final ConversationStore conversations;
     private final HistoryProvider history;
+    private final HistoryTokenCounter tokenCounter;
+    private final Ai2UsageProperties limits;
 
-    public UsageService(UsageQueries queries, ConversationStore conversations, HistoryProvider history) {
+    public UsageService(UsageQueries queries, ConversationStore conversations, HistoryProvider history,
+                        HistoryTokenCounter tokenCounter, Ai2UsageProperties limits) {
         this.queries = queries;
         this.conversations = conversations;
         this.history = history;
+        this.tokenCounter = tokenCounter;
+        this.limits = limits;
     }
 
     /** A user's usage over the UTC days from..to, both inclusive; without dates the current calendar month (UTC). */
@@ -46,9 +51,10 @@ public class UsageService {
         conversations.findOwned(conversationId, userId)
                 .orElseThrow(() -> new NotFoundException("Conversation", conversationId));
         Map<UsageIssuer, TokenTotals> byIssuer = queries.byIssuerForConversation(conversationId);
-        Optional<UsageQueries.LastCall> last = queries.lastChatCall(conversationId);
-        ContextUsage context = new ContextUsage(last.map(UsageQueries.LastCall::inputTokens).orElse(null),
-                last.map(UsageQueries.LastCall::at).orElse(null), history.memoryState(conversationId));
-        return new ConversationUsage(conversationId, TokenTotals.sum(byIssuer.values()), byIssuer, context);
+        HistoryTokens tokens = tokenCounter.count(history.currentHistory(conversationId));
+        ContextUsage context = new ContextUsage(tokens.totalTokens(), tokens.summaryTokens(),
+                limits.contextTokenLimit(), history.memoryState(conversationId));
+        return new ConversationUsage(conversationId, TokenTotals.sum(byIssuer.values()), byIssuer,
+                limits.chatTokenLimit(), context);
     }
 }

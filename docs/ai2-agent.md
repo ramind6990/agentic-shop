@@ -449,7 +449,7 @@ Usage and traces:
 |---|---|---|---|
 | GET | `/api/ai2/usage/me?from&to` | `AI_USAGE_READ_OWN` | `{userId, from, to, total, byIssuer: {USER, SYSTEM}}` (tokens; default the current UTC month) |
 | GET | `/api/ai2/usage/users/{userId}?from&to` | `AI_USAGE_READ_ALL` | the same for any user |
-| GET | `/api/ai2/conversations/{id}/usage` | `AI_CHAT` (owner, else 404) | `{conversationId, total, byIssuer, context: {lastCallInputTokens, lastCallAt, memory}}`; `memory` = `HistoryProvider.memoryState` (summary size, messages since the summary, the limits) |
+| GET | `/api/ai2/conversations/{id}/usage` | `AI_CHAT` (owner, else 404) | `{conversationId, total, byIssuer, tokenLimit, context: {historyTokens, summaryTokens, tokenLimit, memory}}`; the two `tokenLimit`s are `app.ai2.usage.chat-token-limit` / `context-token-limit` (the chat shows usage as percentages of them, nothing is blocked); `historyTokens` = `HistoryProvider.currentHistory` (summary + messages after it, as the next run gets them, never summarizing) counted by `HistoryTokenCounter` (the model's tokenizer, an estimate; instructions and tools not included); `memory` = `HistoryProvider.memoryState` (summary size, messages since the summary, the limits) |
 | GET | `/api/ai2/conversations/{id}/runs` | `AI_TRACE_READ` | the conversation's runs, newest first |
 | GET | `/api/ai2/runs/{runId}/trace` | `AI_TRACE_READ` | `{run, steps}` |
 

@@ -16,10 +16,10 @@
     }
   </header>
 
-  @if (store.chatUsage() || store.myUsage()) {
+  @if (store.chatUsage(); as usage) {
     <div class="chat-usage">
       <div class="chat-column">
-        <app-usage-bar [chat]="store.chatUsage()" [me]="store.myUsage()" />
+        <app-usage-bar [usage]="usage" />
       </div>
     </div>
   }

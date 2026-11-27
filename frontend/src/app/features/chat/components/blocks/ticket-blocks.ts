@@ -12,22 +12,28 @@ import { TicketDetail, TicketItem } from '../../models/chat.model';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @let t = ticket();
-    <div class="d-flex flex-wrap align-items-center gap-2">
-      <span class="fw-semibold">{{ t.ticketNumber }}</span>
-      <app-status-badge [status]="t.status" />
-      @if (t.priority !== 'NORMAL' && t.priority !== 'LOW') {
-        <app-status-badge [status]="t.priority" />
-      }
-      <span class="small text-body-secondary ms-auto"
-        >updated {{ t.updatedAt | date: 'MMM d, HH:mm' }}</span
-      >
+    <div class="block-head">
+      <span class="num">{{ t.ticketNumber }}</span>
+      <span class="d-flex flex-wrap justify-content-end gap-1">
+        @if (t.priority !== 'NORMAL' && t.priority !== 'LOW') {
+          <app-status-badge [status]="t.priority" />
+        }
+        <app-status-badge [status]="t.status" />
+      </span>
     </div>
-    <div>{{ t.subject }}</div>
-    <div class="small text-body-secondary">
+    <div class="subject">{{ t.subject }}</div>
+    <div class="block-meta">
       {{ t.category | enumLabel }} · {{ t.tier
       }}{{ t.orderNumber ? ' · order ' + t.orderNumber : ''
       }}{{ t.customer ? ' · ' + t.customer : '' }}{{ t.assignee ? ' · with ' + t.assignee : '' }}
+      · updated {{ t.updatedAt | date: 'MMM d, HH:mm' }}
     </div>
+  `,
+  host: { class: 'd-flex flex-column gap-1 small' },
+  styles: `
+    .subject {
+      font-size: 0.875rem;
+    }
   `,
 })
 export class TicketSummary {
@@ -40,11 +46,9 @@ export class TicketSummary {
   imports: [TicketSummary],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="d-flex flex-column gap-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 20rem">
       @for (t of items(); track t.ticketNumber) {
-        <li class="card">
-          <div class="card-body p-2 px-3"><app-ticket-summary [ticket]="t" /></div>
-        </li>
+        <li class="block-card"><app-ticket-summary [ticket]="t" /></li>
       }
     </ul>
   `,

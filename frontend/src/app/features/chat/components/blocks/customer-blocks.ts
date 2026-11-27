@@ -11,24 +11,18 @@ import { ChatAddress, CustomerDetail, CustomerRow } from '../../models/chat.mode
   imports: [AddressBlock],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="row row-cols-1 row-cols-sm-2 g-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 14rem">
       @for (a of items(); track $index) {
-        <li class="col">
-          <div class="card h-100">
-            <div class="card-body p-2 px-3 small">
-              @if (a.label || a.defaultAddress) {
-                <div class="d-flex gap-2 mb-1">
-                  @if (a.label) {
-                    <span class="fw-semibold">{{ a.label }}</span>
-                  }
-                  @if (a.defaultAddress) {
-                    <span class="badge text-bg-light border">Default</span>
-                  }
-                </div>
+        <li class="block-card">
+          @if (a.label || a.defaultAddress) {
+            <div class="block-head">
+              <span>{{ a.label }}</span>
+              @if (a.defaultAddress) {
+                <span class="badge text-bg-light border">Default</span>
               }
-              <app-address-block [address]="a" />
             </div>
-          </div>
+          }
+          <app-address-block [address]="a" />
         </li>
       }
     </ul>
@@ -44,15 +38,15 @@ export class AddressCards {
   imports: [DatePipe, StatusBadge],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="d-flex flex-column gap-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 16rem">
       @for (c of items(); track c.id) {
-        <li class="card">
-          <div class="card-body p-2 px-3 small d-flex flex-wrap align-items-center gap-2">
-            <span class="fw-semibold">{{ c.fullName }}</span>
-            <span class="text-body-secondary">{{ c.email }}</span>
+        <li class="block-card">
+          <div class="block-head">
+            <span>{{ c.fullName }}</span>
             <app-status-badge [status]="c.status" />
-            <span class="ms-auto text-body-secondary">since {{ c.createdAt | date: 'MMM y' }}</span>
           </div>
+          <div class="block-meta text-truncate" [title]="c.email">{{ c.email }}</div>
+          <div class="block-meta">Customer since {{ c.createdAt | date: 'MMM y' }}</div>
         </li>
       }
     </ul>

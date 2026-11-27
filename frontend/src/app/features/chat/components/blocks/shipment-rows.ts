@@ -10,27 +10,27 @@ import { ShipmentRow } from '../../models/chat.model';
   imports: [DatePipe, StatusBadge],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="d-flex flex-column gap-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 17rem">
       @for (s of items(); track s.trackingNumber) {
-        <li class="card">
-          <div class="card-body p-2 px-3 small">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="fw-semibold">{{ s.carrier }} {{ s.trackingNumber }}</span>
-              <app-status-badge [status]="s.status" />
-              <span class="ms-auto text-body-secondary">
-                @if (s.deliveredAt) {
-                  Delivered {{ s.deliveredAt | date: 'MMM d' }}
-                } @else if (s.estimatedDelivery) {
-                  Due {{ s.estimatedDelivery | date: 'MMM d' }}
-                }
-              </span>
-            </div>
-            <div class="text-body-secondary">
-              Order {{ s.orderNumber }} · {{ s.customer }} · {{ s.seller }}
+        <li class="block-card">
+          <div class="block-head">
+            <span>{{ s.carrier }} <span class="num">{{ s.trackingNumber }}</span></span>
+            <app-status-badge [status]="s.status" />
+          </div>
+          <div class="block-meta">Order {{ s.orderNumber }} · {{ s.customer }} · {{ s.seller }}</div>
+          <div class="block-foot">
+            <span>
               @if (s.shippedAt) {
-                · shipped {{ s.shippedAt | date: 'MMM d' }}
+                Shipped {{ s.shippedAt | date: 'MMM d' }}
               }
-            </div>
+            </span>
+            <span>
+              @if (s.deliveredAt) {
+                Delivered {{ s.deliveredAt | date: 'MMM d' }}
+              } @else if (s.estimatedDelivery) {
+                Due {{ s.estimatedDelivery | date: 'MMM d' }}
+              }
+            </span>
           </div>
         </li>
       }

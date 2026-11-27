@@ -367,14 +367,6 @@ export interface TokenTotals {
 
 export type UsageIssuer = 'USER' | 'SYSTEM';
 
-export interface UserUsage {
-  userId: number;
-  from: string;
-  to: string;
-  total: TokenTotals;
-  byIssuer: Record<UsageIssuer, TokenTotals>;
-}
-
 export interface MemoryState {
   summarized: boolean;
   summaryChars: number;
@@ -389,10 +381,15 @@ export interface ConversationUsage {
   conversationId: number;
   total: TokenTotals;
   byIssuer: Record<UsageIssuer, TokenTotals>;
+  /** What `total` is measured against (configured on the server). */
+  tokenLimit: number;
+  /** The history the next message starts from (summary + messages after it), estimated in tokens. */
   context: {
-    /** Input tokens of the conversation's latest agent call; null before the first one. */
-    lastCallInputTokens: number | null;
-    lastCallAt: string | null;
+    historyTokens: number;
+    /** The summary alone; 0 without one. */
+    summaryTokens: number;
+    /** What `historyTokens` is measured against (configured on the server). */
+    tokenLimit: number;
     memory: MemoryState;
   };
 }

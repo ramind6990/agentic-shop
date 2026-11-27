@@ -1,102 +1,79 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-import { ConversationUsage, TokenTotals, UserUsage } from '../../models/chat.model';
+import { ConversationUsage } from '../../models/chat.model';
 
-const COMPACT = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-
-/** "12.4k" for 12 400 tokens. */
-function tokens(n: number): string {
-  return COMPACT.format(n);
+/** "0%", "1.8%", "25%": one decimal below 10. */
+function percent(used: number, limit: number): string {
+  const p = limit > 0 ? (used / limit) * 100 : 0;
+  if (p === 0) return '0%';
+  return `${p < 10 ? Math.max(p, 0.1).toFixed(1) : Math.round(p)}%`;
 }
 
-function breakdown(t: TokenTotals): string {
-  return (
-    `${t.calls} model calls: ${t.inputTokens.toLocaleString('en')} input ` +
-    `(${t.cachedInputTokens.toLocaleString('en')} cached), ${t.outputTokens.toLocaleString('en')} output ` +
-    `(${t.reasoningTokens.toLocaleString('en')} reasoning)`
-  );
-}
+const n = (v: number) => v.toLocaleString('en');
 
 /**
- * Token usage above the conversation: this chat's tokens (the user's own requests and the system's work, such as
- * summarizing the memory), how full its context is (the last model call's input, and the memory: messages kept word
- * for word until the next summary) and the user's tokens this month. Details are in the tooltips.
+ * This conversation's usage, above it: the tokens it used so far (left) and the size of its history (right), each as
+ * a share of the limit the server is configured with. The numbers are in the tooltips.
  */
 @Component({
   selector: 'app-usage-bar',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (chat(); as c) {
-      <span [title]="chatTitle()">
-        This chat <strong class="num">{{ fmt(c.total.totalTokens) }}</strong> tokens
-        <span class="text-body-secondary">
-          (you {{ fmt(c.byIssuer.USER.totalTokens) }} · system
-          {{ fmt(c.byIssuer.SYSTEM.totalTokens) }})
-        </span>
-      </span>
-      <span [title]="contextTitle()">
-        Context
-        <strong class="num">{{
-          c.context.lastCallInputTokens === null ? '–' : fmt(c.context.lastCallInputTokens)
-        }}</strong>
-        <span class="text-body-secondary">
-          · memory {{ c.context.memory.messagesSinceSummary }}/{{
-            c.context.memory.summarizeAfter
-          }}
-          msgs{{ c.context.memory.summarized ? ' + summary' : '' }}
-        </span>
-      </span>
-    }
-    @if (me(); as m) {
-      <span class="ms-md-auto" [title]="meTitle()">
-        This month <strong class="num">{{ fmt(m.total.totalTokens) }}</strong> tokens
-      </span>
-    }
+    <span [title]="chatTitle()">
+      Chat usage <strong class="num" [class]="level(chatShare())">{{ chatPercent() }}</strong>
+    </span>
+    <span [title]="contextTitle()">
+      Context <strong class="num" [class]="level(contextShare())">{{ contextPercent() }}</strong>
+    </span>
   `,
   styles: `
     :host {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      column-gap: 1.25rem;
-      row-gap: 0.15rem;
+      justify-content: space-between;
+      gap: 1rem;
       font-size: 0.8125rem;
     }
   `,
 })
 export class UsageBar {
-  readonly chat = input<ConversationUsage | null>(null);
-  readonly me = input<UserUsage | null>(null);
+  readonly usage = input.required<ConversationUsage>();
 
-  protected readonly fmt = tokens;
+  protected readonly chatShare = computed(() => {
+    const u = this.usage();
+    return u.total.totalTokens / u.tokenLimit;
+  });
+  protected readonly contextShare = computed(() => {
+    const c = this.usage().context;
+    return c.historyTokens / c.tokenLimit;
+  });
+  protected readonly chatPercent = computed(() =>
+    percent(this.usage().total.totalTokens, this.usage().tokenLimit),
+  );
+  protected readonly contextPercent = computed(() =>
+    percent(this.usage().context.historyTokens, this.usage().context.tokenLimit),
+  );
 
   protected readonly chatTitle = computed(() => {
-    const c = this.chat();
-    if (!c) return '';
-    return `Your requests: ${breakdown(c.byIssuer.USER)}\nSystem (memory summaries): ${breakdown(c.byIssuer.SYSTEM)}`;
-  });
-
-  protected readonly contextTitle = computed(() => {
-    const c = this.chat();
-    if (!c) return '';
-    const m = c.context.memory;
-    const last =
-      c.context.lastCallInputTokens === null
-        ? 'No model call yet.'
-        : `The last model call read ${c.context.lastCallInputTokens.toLocaleString('en')} tokens ` +
-          '(instructions, tools, summary, earlier messages and that request).';
-    const summary = m.summarized
-      ? `Summary: ${m.summaryChars} of ${m.maxSummaryChars} characters (the chat closes above ${m.hardLimitChars}).`
-      : 'No summary yet.';
+    const u = this.usage();
     return (
-      `${last}\n${m.messagesSinceSummary} messages are kept word for word; ` +
-      `above ${m.summarizeAfter} the older ones are summarized (the newest ${m.keepRecent} stay).\n${summary}`
+      `${n(u.total.totalTokens)} of ${n(u.tokenLimit)} tokens used in this chat ` +
+      `(your messages ${n(u.byIssuer.USER.totalTokens)}, memory summaries ${n(u.byIssuer.SYSTEM.totalTokens)}).`
     );
   });
 
-  protected readonly meTitle = computed(() => {
-    const m = this.me();
-    if (!m) return '';
-    return `You: ${breakdown(m.byIssuer.USER)}\nSystem: ${breakdown(m.byIssuer.SYSTEM)}`;
+  protected readonly contextTitle = computed(() => {
+    const { historyTokens, summaryTokens, tokenLimit, memory: m } = this.usage().context;
+    const parts = m.summarized
+      ? `summary ~${n(summaryTokens)} + ${m.messagesSinceSummary} messages ~${n(historyTokens - summaryTokens)}`
+      : `${m.messagesSinceSummary} messages`;
+    return (
+      `~${n(historyTokens)} of ${n(tokenLimit)} tokens of history go with your next message (${parts}; estimated).\n` +
+      `Above ${m.summarizeAfter} messages the older ones are summarized (the newest ${m.keepRecent} stay).`
+    );
   });
+
+  /** Muted text normally; amber from 75%, red from 90%. */
+  protected level(share: number): string {
+    return share >= 0.9 ? 'text-danger' : share >= 0.75 ? 'text-warning-emphasis' : 'text-body';
+  }
 }

@@ -151,6 +151,12 @@ app:
       # a summary longer than this closes the conversation (new messages: "start a new one")
       hard-limit-chars: ${AI2_SUMMARY_HARD_LIMIT:6000}
       prompt-version: v1
+    # what the chat's usage bar measures against, in tokens (shown as percentages; nothing is blocked)
+    usage:
+      # one conversation's model calls over its lifetime
+      chat-token-limit: ${AI2_CHAT_TOKEN_LIMIT:1000000}
+      # its history (summary + messages after it) as the next message gets it
+      context-token-limit: ${AI2_CONTEXT_TOKEN_LIMIT:200000}
     # live run events (/api/ai2/runs/{runId}/events), in memory
     events:
       # closed streams stay replayable this long, so a late reconnect still gets the last event

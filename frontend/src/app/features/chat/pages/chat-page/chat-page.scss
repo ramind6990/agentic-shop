@@ -67,6 +67,9 @@
 }
 
 .chat-scroll {
+  // positioned, so absolutely placed children (Bootstrap's .visually-hidden texts) scroll and clip with it instead of
+  // overflowing the page around the chat
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;

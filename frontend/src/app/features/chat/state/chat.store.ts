@@ -76,12 +76,6 @@ export class ChatStore {
     (id) => this.api.conversationUsage(id),
   );
   readonly chatUsage = computed(() => this.chatUsage$.value() ?? null);
-  /** The user's tokens this month; reloaded whenever any of their runs ends. */
-  private readonly myUsage$ = loadOnChange(
-    () => true,
-    () => this.api.myUsage(),
-  );
-  readonly myUsage = computed(() => this.myUsage$.value() ?? null);
 
   private readonly _items = signal<ChatItem[]>([]);
   private readonly _progress = signal<string | null>(null);
@@ -202,7 +196,6 @@ export class ChatStore {
     if (conversationId === undefined) return;
     this.markBusy(conversationId, m.type === 'INPUT' || m.type === 'PROGRESS');
     const runEnded = m.type === 'REPLY' || m.type === 'INTERACTION' || m.type === 'ERROR';
-    if (runEnded) this.myUsage$.reload();
     if (m.type === 'INPUT') {
       if (mine && pending?.conversationId === null) this.adopt(conversationId);
       if (!this.conversations().some((c) => c.id === conversationId)) this.list$.reload();

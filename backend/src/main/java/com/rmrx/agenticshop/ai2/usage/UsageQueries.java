@@ -9,7 +9,6 @@ import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /** Reads of the token ledger. */
 @Component
@@ -21,10 +20,6 @@ public class UsageQueries {
                    coalesce(sum(reasoning_tokens), 0) as reasoning
             from ai2_usage
             """;
-
-    /** The input size and time of a model call. */
-    public record LastCall(int inputTokens, Instant at) {
-    }
 
     private record IssuerRow(UsageIssuer issuer, TokenTotals totals) {
     }
@@ -49,16 +44,6 @@ public class UsageQueries {
     /** A conversation's totals per issuer over its lifetime; both issuers are always present. */
     public Map<UsageIssuer, TokenTotals> byIssuerForConversation(Long conversationId) {
         return byIssuer(jdbc.query(SUMS + "where conversation_id = ? group by issuer", ROW, conversationId));
-    }
-
-    /** The conversation's latest agent (CHAT) call: its input is what the model last had in its context. */
-    public Optional<LastCall> lastChatCall(Long conversationId) {
-        return jdbc.query("""
-                        select input_tokens, created_at from ai2_usage
-                        where conversation_id = ? and purpose = 'CHAT'
-                        order by id desc limit 1""",
-                (rs, i) -> new LastCall(rs.getInt("input_tokens"), rs.getTimestamp("created_at").toInstant()),
-                conversationId).stream().findFirst();
     }
 
     private static Map<UsageIssuer, TokenTotals> byIssuer(List<IssuerRow> rows) {

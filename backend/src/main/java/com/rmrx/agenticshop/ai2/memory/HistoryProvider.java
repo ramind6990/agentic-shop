@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * The conversation so far, as the model sees it before the current run's own messages: the summary of older
@@ -32,14 +33,25 @@ public class HistoryProvider {
 
     public List<ChatMessage> history(RunContext context) {
         summarizer.summarizeIfDue(context);
-        Optional<ConversationMemory> memory = memories.find(context.conversationId());
+        return load(context.conversationId(), context.runId());
+    }
+
+    /**
+     * The history the next run would start from, as it stands now: the summary, then every stored message after it.
+     * Read-only: never summarizes, so it is what the model gets before any summary that run may make.
+     */
+    public List<ChatMessage> currentHistory(Long conversationId) {
+        return load(conversationId, null);
+    }
+
+    private List<ChatMessage> load(Long conversationId, UUID excludedRunId) {
+        Optional<ConversationMemory> memory = memories.find(conversationId);
         long through = memory.map(ConversationMemory::summarizedThroughMessageId).orElse(0L);
 
         List<ChatMessage> history = new ArrayList<>();
         memory.ifPresent(m -> history.add(SystemMessage.from(
                 "Summary of the earlier part of this conversation:\n" + m.summary())));
-        history.addAll(HistoryProjection.toChatMessages(
-                messages.listAfter(context.conversationId(), through, context.runId())));
+        history.addAll(HistoryProjection.toChatMessages(messages.listAfter(conversationId, through, excludedRunId)));
         return history;
     }
 

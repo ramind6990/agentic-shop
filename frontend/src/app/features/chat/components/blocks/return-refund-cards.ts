@@ -11,23 +11,21 @@ import { RefundItem, ReturnItem } from '../../models/chat.model';
   imports: [DatePipe, StatusBadge, EnumLabelPipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="d-flex flex-column gap-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 17rem">
       @for (r of items(); track r.id) {
-        <li class="card">
-          <div class="card-body p-2 px-3 small">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="fw-semibold">{{ r.quantity }} × {{ r.product }}</span>
-              <app-status-badge [status]="r.status" />
-            </div>
-            <div class="text-body-secondary">
-              Order {{ r.orderNumber }} · {{ r.reason | enumLabel }} · opened
-              {{ r.openedAt | date: 'MMM d, y' }}
-              @if (r.resolvedAt) {
-                · resolved {{ r.resolvedAt | date: 'MMM d' }}
-              }
-            </div>
-            @if (r.resolutionNote) {
-              <div class="mt-1">{{ r.resolutionNote }}</div>
+        <li class="block-card">
+          <div class="block-head">
+            <span>{{ r.quantity }} × {{ r.product }}</span>
+            <app-status-badge [status]="r.status" />
+          </div>
+          <div class="block-meta">Order {{ r.orderNumber }} · {{ r.reason | enumLabel }}</div>
+          @if (r.resolutionNote) {
+            <div class="line-clamp" [title]="r.resolutionNote">{{ r.resolutionNote }}</div>
+          }
+          <div class="block-foot">
+            <span>Opened {{ r.openedAt | date: 'MMM d, y' }}</span>
+            @if (r.resolvedAt) {
+              <span>Resolved {{ r.resolvedAt | date: 'MMM d' }}</span>
             }
           </div>
         </li>
@@ -45,23 +43,30 @@ export class ReturnCards {
   imports: [DatePipe, DecimalPipe, StatusBadge],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="d-flex flex-column gap-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 15rem">
       @for (r of items(); track r.id) {
-        <li class="card">
-          <div class="card-body p-2 px-3 small">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <span class="fw-semibold num">{{ r.amount | number: '1.2-2' }}</span>
-              <app-status-badge [status]="r.status" />
-              <span class="text-body-secondary ms-auto">{{ r.createdAt | date: 'MMM d, y' }}</span>
-            </div>
-            <div class="text-body-secondary">
-              Order {{ r.orderNumber }}{{ r.reason ? ' · ' + r.reason : ''
-              }}{{ r.returnId ? ' · for a return' : '' }}
-            </div>
+        <li class="block-card">
+          <div class="block-head">
+            <span class="num amount">{{ r.amount | number: '1.2-2' }}</span>
+            <app-status-badge [status]="r.status" />
+          </div>
+          <div class="block-meta">
+            Order {{ r.orderNumber }}{{ r.returnId ? ' · for a return' : '' }}
+          </div>
+          @if (r.reason) {
+            <div class="line-clamp" [title]="r.reason">{{ r.reason }}</div>
+          }
+          <div class="block-foot">
+            <span>Created {{ r.createdAt | date: 'MMM d, y' }}</span>
           </div>
         </li>
       }
     </ul>
+  `,
+  styles: `
+    .amount {
+      font-size: 0.9375rem;
+    }
   `,
 })
 export class RefundCards {

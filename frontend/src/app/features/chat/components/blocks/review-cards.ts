@@ -10,28 +10,26 @@ import { Review } from '../../models/chat.model';
   imports: [DatePipe, StarRating],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <ul class="d-flex flex-column gap-2 list-unstyled mb-0">
+    <ul class="block-grid" style="--block-min: 20rem">
       @for (r of items(); track r.id) {
-        <li class="card">
-          <div class="card-body p-2 px-3">
-            <div class="d-flex flex-wrap align-items-center gap-2">
-              <app-star-rating [value]="r.rating" [showValue]="false" />
-              @if (r.title) {
-                <span class="fw-semibold">{{ r.title }}</span>
-              }
-            </div>
-            @if (r.body) {
-              <p class="small mb-1 mt-1 body">{{ r.body }}</p>
-            }
-            <div class="small text-body-secondary">
+        <li class="block-card">
+          <app-star-rating [value]="r.rating" [showValue]="false" />
+          @if (r.title) {
+            <div class="fw-semibold">{{ r.title }}</div>
+          }
+          @if (r.body) {
+            <p class="mb-0 body line-clamp" style="--lines: 5" [title]="r.body">{{ r.body }}</p>
+          }
+          <div class="block-foot">
+            <span>
               {{ r.authorName }} · {{ r.createdAt | date: 'MMM d, y' }}
               @if (r.verifiedPurchase) {
-                · <span class="text-success-emphasis">Verified purchase</span>
+                · <span class="text-success-emphasis">Verified</span>
               }
-              @if (r.helpfulCount > 0) {
-                · {{ r.helpfulCount }} found it helpful
-              }
-            </div>
+            </span>
+            @if (r.helpfulCount > 0) {
+              <span>{{ r.helpfulCount }} found it helpful</span>
+            }
           </div>
         </li>
       }
