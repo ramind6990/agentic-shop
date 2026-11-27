@@ -28,6 +28,13 @@
       "port": 8082
     },
     {
+      "name": "backend-langfuse",
+      "runtimeExecutable": "mvn",
+      "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",
+        "-Dspring-boot.run.arguments=--app.ai2.langfuse.enabled=true"],
+      "port": 8080
+    },
+    {
       "name": "backend-small-memory",
       "runtimeExecutable": "mvn",
       "runtimeArgs": ["-f", "backend/pom.xml", "-o", "spring-boot:run",

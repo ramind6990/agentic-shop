@@ -433,6 +433,32 @@ Trace and usage are written in four places only:
   the FAILED reply and traces the error; the history gives the next run "(I could not answer this message: an error
   occurred.)" (STOPPED: "(The customer stopped this request before I replied.)").
 
+### Langfuse export
+
+A second, developer-facing copy of the trace goes to [Langfuse](https://langfuse.com) (LLM observability) when
+`app.ai2.langfuse.enabled` is true and both keys are set (`LANGFUSE_ENABLED`, `LANGFUSE_PUBLIC_KEY`,
+`LANGFUSE_SECRET_KEY`, optional `LANGFUSE_BASE_URL` (default: EU cloud) and `LANGFUSE_ENVIRONMENT`, all in the root `.env`;
+launch config `backend-langfuse` turns it on). The Postgres trace stays the source of the usage bar and the API.
+
+- **Transport**: ai2's own OpenTelemetry SDK (`ai2/trace/langfuse/LangfuseConfig`), not Spring observability and not
+  registered globally, so only ai2 spans are sent (no HTTP or JDBC spans). OTLP over HTTP (Langfuse has no gRPC) to
+  `{base-url}/api/public/otel/v1/traces`, Basic auth, `x-langfuse-ingestion-version: 4`. Batched in the background;
+  flushed on shutdown. A failed export is logged by the SDK and never touches the run.
+- **Hook points**: `TraceRecorder` forwards run start / pause / end and every non-model step to `LangfuseExporter`;
+  `ModelGateway` reports each model attempt itself, with the full request and response.
+- **Shape**: one trace per run, trace id = `ai2_run.id` without dashes (`RunTraceIds`), so a paused and resumed run
+  (even across a restart) stays one trace. One `agent` span per segment (start/resume → pause/end; "ai2 run (resumed)"
+  after an answer), its input = the user's message (or question + answer), output = the reply text. Under it:
+  `generation` per model attempt (named chat / summary / guard: note; model, parameters, usage, full messages in
+  OpenAI chat format, failed attempts at level ERROR), `tool` per tool call, `guardrail` (WARNING) per guard
+  intervention, `span` (WARNING) per validation rejection, `event`s for input, pause, reply and error. Every span carries session =
+  conversation id, user = user id, version = prompt version, tags `ai2` + prompt version, the environment.
+- **Usage and cost**: `input` = uncached input tokens, `input_cached_tokens`, `output` (reasoning included; reasoning
+  tokens also in metadata), `total`. Langfuse prices them from its model definitions (the first test run of
+  `gpt-6-luna` was priced); a model it does not know needs a custom definition (Settings → Models) with input, cached input and output prices.
+- **PII**: every text (messages, tool arguments and results, replies) goes through `PiiRedactor` (cards, IBANs,
+  emails, phone numbers). Names and postal addresses are not covered: fine for seed data, revisit before real data.
+
 ## 11. API
 
 All endpoints need the `AI_CHAT` permission (customers and support staff).

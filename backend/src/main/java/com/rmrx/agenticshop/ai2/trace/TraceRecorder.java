@@ -3,6 +3,7 @@ package com.rmrx.agenticshop.ai2.trace;
 import com.rmrx.agenticshop.ai2.contract.tool.Texts;
 import com.rmrx.agenticshop.ai2.model.Ai2ModelProperties;
 import com.rmrx.agenticshop.ai2.model.SystemPrompt;
+import com.rmrx.agenticshop.ai2.trace.langfuse.LangfuseExporter;
 import com.rmrx.agenticshop.ai2.usage.TokenCounts;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +16,9 @@ import java.util.UUID;
  * Writes run traces ({@code ai2_run}, {@code ai2_run_step}). Every write is one statement that commits on its own, so
  * the trace survives a failed run. A step's seq comes from the run row's counter in the same statement (the row lock
  * orders concurrent steps). Nothing here ever throws: a failed write is logged.
+ * <p>
+ * Run events and steps also go to {@link LangfuseExporter} (when on), except MODEL steps: {@code ModelGateway} reports
+ * those to Langfuse itself, with the full request and response.
  */
 @Component("ai2TraceRecorder")
 public class TraceRecorder {
@@ -29,11 +33,14 @@ public class TraceRecorder {
     private final JdbcTemplate jdbc;
     private final String promptVersion;
     private final String model;
+    private final LangfuseExporter langfuse;
 
-    public TraceRecorder(JdbcTemplate jdbc, SystemPrompt systemPrompt, Ai2ModelProperties modelProps) {
+    public TraceRecorder(JdbcTemplate jdbc, SystemPrompt systemPrompt, Ai2ModelProperties modelProps,
+                         LangfuseExporter langfuse) {
         this.jdbc = jdbc;
         this.promptVersion = systemPrompt.version();
         this.model = modelProps.modelName();
+        this.langfuse = langfuse;
     }
 
     /** A run starts (new row) or resumes after a pause (RUNNING again). */
@@ -44,11 +51,13 @@ public class TraceRecorder {
                         values (?, ?, ?, 'RUNNING', ?, ?, now(), now())
                         on conflict (id) do update set status = 'RUNNING', updated_at = now()""",
                 runId, conversationId, userId, promptVersion, model));
+        langfuse.runStarted(runId, conversationId, userId);
     }
 
     public void runPaused(UUID runId) {
         write("pause run " + runId, () -> jdbc.update(
                 "update ai2_run set status = 'PAUSED', updated_at = now() where id = ?", runId));
+        langfuse.runPaused(runId);
     }
 
     /** Closes the run; errorCode and message are null unless it failed. */
@@ -58,6 +67,7 @@ public class TraceRecorder {
                                            updated_at = now()
                         where id = ?""",
                 status.name(), Texts.cut(errorCode, CODE_LIMIT), message, runId));
+        langfuse.runFinished(runId, status, errorCode, message);
     }
 
     public void step(UUID runId, TraceStep step) {
@@ -80,6 +90,7 @@ public class TraceRecorder {
                 step.latencyMs() == null ? null : (int) Math.min(Integer.MAX_VALUE, step.latencyMs()),
                 tokens == null ? null : tokens.input(), tokens == null ? null : tokens.cached(),
                 tokens == null ? null : tokens.output(), tokens == null ? null : tokens.reasoning()));
+        langfuse.step(runId, step);
     }
 
     private static void write(String what, Runnable statement) {

@@ -187,6 +187,14 @@ app:
       chat-token-limit: ${AI2_CHAT_TOKEN_LIMIT:1000000}
       # its history (summary + messages after it) as the next message gets it
       context-token-limit: ${AI2_CONTEXT_TOKEN_LIMIT:200000}
+    # LLM tracing to Langfuse (OTLP over HTTP; ai2 runs only, prompts and replies PII-redacted). Off unless enabled
+    # and both keys are set; keys from the project's Langfuse settings (EU cloud by default).
+    langfuse:
+      enabled: ${LANGFUSE_ENABLED:false}
+      base-url: ${LANGFUSE_BASE_URL:https://cloud.langfuse.com}
+      public-key: ${LANGFUSE_PUBLIC_KEY:}
+      secret-key: ${LANGFUSE_SECRET_KEY:}
+      environment: ${LANGFUSE_ENVIRONMENT:development}
     # live run events (/api/ai2/runs/{runId}/events), in memory
     events:
       # closed streams stay replayable this long, so a late reconnect still gets the last event

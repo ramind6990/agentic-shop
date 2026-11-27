@@ -127,6 +127,17 @@
             <artifactId>pgvector</artifactId>
             <version>${pgvector.version}</version>
         </dependency>
+
+        <!-- ai2 LLM tracing to Langfuse: a dedicated OpenTelemetry SDK (OTLP over HTTP), not Spring's observability;
+             versions from Spring Boot's opentelemetry-bom -->
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-sdk</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
     </dependencies>
 
     <build>

@@ -5,6 +5,7 @@ import com.rmrx.agenticshop.ai2.events.RunEvents;
 import com.rmrx.agenticshop.ai2.trace.ErrorCodes;
 import com.rmrx.agenticshop.ai2.trace.TraceRecorder;
 import com.rmrx.agenticshop.ai2.trace.TraceStep;
+import com.rmrx.agenticshop.ai2.trace.langfuse.LangfuseExporter;
 import com.rmrx.agenticshop.ai2.usage.TokenCounts;
 import com.rmrx.agenticshop.ai2.usage.UsageRecorder;
 import dev.langchain4j.model.ModelProvider;
@@ -22,7 +23,8 @@ import java.util.UUID;
 
 /**
  * The one way ai2 calls its model. Every attempt is written to the run's trace (a MODEL step with its latency, tokens
- * or error) and every successful one to the token ledger, billed to the call's {@link ModelCall#scope()}.
+ * or error) and every successful one to the token ledger, billed to the call's {@link ModelCall#scope()}. Langfuse
+ * (when on) gets each attempt as a generation with the full, PII-redacted request and response.
  * <p>
  * Transient errors ({@link ModelRetryPolicy}) are retried when the call allows it, with backoff; before each retry the
  * run's stream gets a RETRYING notice ("Request failed. Retrying (2/5)"), and after a successful retry a THINKING one.
@@ -40,15 +42,18 @@ public class ModelGateway {
     private final UsageRecorder usage;
     private final TraceRecorder trace;
     private final RunEvents events;
+    private final LangfuseExporter langfuse;
     private final String configuredModel;
 
     public ModelGateway(@Qualifier(Ai2ModelConfig.CHAT_MODEL) ChatModel model, ModelRetryPolicy retryPolicy,
-                        UsageRecorder usage, TraceRecorder trace, RunEvents events, Ai2ModelProperties props) {
+                        UsageRecorder usage, TraceRecorder trace, RunEvents events, LangfuseExporter langfuse,
+                        Ai2ModelProperties props) {
         this.model = model;
         this.retryPolicy = retryPolicy;
         this.usage = usage;
         this.trace = trace;
         this.events = events;
+        this.langfuse = langfuse;
         this.configuredModel = props.modelName();
     }
 
@@ -80,6 +85,7 @@ public class ModelGateway {
         usage.record(call.scope(), provider(), modelName, tokens);
         trace.step(call.scope().runId(), TraceStep.model(modelName, attempt, ModelSummaries.request(request, call),
                 ModelSummaries.response(response), null, latencyMs, tokens));
+        langfuse.generation(call, request, response, modelName, attempt, latencyMs, tokens);
     }
 
     private void failed(ChatRequest request, ModelCall call, RuntimeException error, int attempt, long latencyMs,
@@ -88,6 +94,7 @@ public class ModelGateway {
         log.warn("ai2 model call failed (run {}, attempt {}): {}", call.scope().runId(), attempt, outcome);
         trace.step(call.scope().runId(), TraceStep.model(configuredModel, attempt,
                 ModelSummaries.request(request, call), outcome, ErrorCodes.of(error), latencyMs, null));
+        langfuse.failedGeneration(call, request, configuredModel, attempt, latencyMs, ErrorCodes.of(error), outcome);
     }
 
     private void notice(UUID runId, Stage stage, String label) {
